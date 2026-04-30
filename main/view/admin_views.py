@@ -81,6 +81,7 @@ class AddBlog(SuccessMessageMixin, CreateView, ListView):
         context = super().get_context_data(**kwargs)
         context['blog_posts'] = BlogPost.objects.all()
         context['edit_form'] = EditBlogForm()
+        context['type_choices'] = BlogPost.TYPE_CHOICES
         return context
 
 
@@ -109,6 +110,32 @@ class EditBlogView(View):
         else:
             # Form is not valid, handle accordingly
             return render(request, self.template_name, {'edit_form': edit_form})
+
+
+@admin_required
+def admin_notification_get_info(request, blog_post_id):
+    blog_post = get_object_or_404(BlogPost, id=blog_post_id)
+    return JsonResponse({
+        'blog_post': {
+            'id': blog_post.id,
+            'title': blog_post.title,
+            'body': blog_post.body,
+            'type': blog_post.type,
+        }
+    })
+
+
+@admin_required
+@require_POST
+def admin_notification_edit(request, blog_post_id):
+    blog_post = get_object_or_404(BlogPost, id=blog_post_id)
+    form = EditBlogForm(request.POST, instance=blog_post)
+    if form.is_valid():
+        form.save()
+        messages.success(request, 'Cập nhật thông báo thành công.')
+    else:
+        messages.error(request, 'Cập nhật thông báo thất bại.')
+    return redirect('admin_notification_view')
 
 
 @admin_required
@@ -359,12 +386,14 @@ def admin_lecturer_get_info(request, id_staff):
 @admin_required
 def admin_schedule_management_view(request):
     schedule = Classroom.objects.all()
+    lecturers = StaffInfo.objects.filter(roles__name='Lecturer').order_by('id_staff')
     schedule_per_page = 10
     paginator = Paginator(schedule, schedule_per_page)
     page_number = request.GET.get('page')
     page = paginator.get_page(page_number)
     context = {
         'list_schedules': page,
+        'list_lecturers': lecturers,
     }
 
     return render(request, 'admin/admin_schedule_management.html', context)
@@ -403,7 +432,7 @@ def admin_schedule_edit(request, id_classroom):
         schedule.day_of_week_begin = request.POST['day_of_week_begin']
         schedule.begin_time = request.POST['begin_time']
         schedule.end_time = request.POST['end_time']
-        schedule.id_lecturer_id = request.POST['lecturer_name']
+        schedule.id_lecturer_id = request.POST['id_lecturer']
         schedule.save()
         messages.success(request, 'Thay đổi thông tin thành công.')
         return redirect('admin_schedule_management')
@@ -420,10 +449,8 @@ def admin_schedule_delete(request, id_classroom):
 def admin_schedule_get_info(request, id_classroom):
     try:
         schedule = Classroom.objects.get(id_classroom=id_classroom)
-        if schedule.id_lecturer is None:
-            lecturer_name = 'Hiện chưa có giảng viên phụ trách (Vui lòng thêm giảng viên)'
-        else:
-            lecturer_name = schedule.id_lecturer.staff_name
+        lecturer_id = schedule.id_lecturer_id
+        lecturer_name = schedule.id_lecturer.staff_name if schedule.id_lecturer else ''
         schedule_data = {
             'id_classroom': schedule.id_classroom,
             'name': schedule.name,
@@ -432,6 +459,7 @@ def admin_schedule_get_info(request, id_classroom):
             'day_of_week_begin': schedule.day_of_week_begin,
             'begin_time': schedule.begin_time,
             'end_time': schedule.end_time,
+            'id_lecturer': lecturer_id,
             'lecturer_name': lecturer_name,
         }
         return JsonResponse({'schedule': schedule_data})
@@ -457,11 +485,18 @@ def admin_list_classroom_student_view(request):
 def admin_list_student_in_classroom_view(request, classroom_id):
     classroom = Classroom.objects.get(pk=classroom_id)
     students_in_class = StudentClassDetails.objects.filter(id_classroom=classroom)
+    available_students = StudentInfo.objects.exclude(
+        studentclassdetails__id_classroom=classroom
+    ).order_by('id_student')
     student_per_page = 10
     page_number = request.GET.get('page')
     paginator = Paginator(students_in_class, student_per_page)
     page = paginator.get_page(page_number)
-    context = {'students_in_class': page, 'classroom_id': classroom_id, }
+    context = {
+        'students_in_class': page,
+        'classroom_id': classroom_id,
+        'available_students': available_students,
+    }
     return render(request, 'admin/admin_list_student_classroom_management.html', context)
 
 
@@ -496,14 +531,31 @@ def admin_list_student_in_class_add_list(request, classroom_id):
 @admin_required
 def admin_list_student_in_class_add(request, classroom_id):
     if request.method == 'POST':
-        id_student = request.POST.get('id_student')
-        if StudentClassDetails.objects.filter(id_classroom_id=classroom_id, id_student_id=id_student).exists():
-            messages.warning(request, 'Sinh viên đã tồn tại trong lớp học.')
-        else:
-            student_in_class = StudentClassDetails(id_classroom_id=classroom_id,
-                                                   id_student_id=id_student)
-            student_in_class.save()
-            messages.success(request, 'Thêm sinh viên vào lớp học thành công.')
+        id_students = request.POST.getlist('id_students')
+        if not id_students:
+            messages.warning(request, 'Vui lòng chọn ít nhất 1 sinh viên.')
+            return redirect('admin_list_student_in_classroom', classroom_id)
+
+        added = 0
+        existed = 0
+        with transaction.atomic():
+            for id_student in id_students:
+                if StudentClassDetails.objects.filter(
+                    id_classroom_id=classroom_id,
+                    id_student_id=id_student
+                ).exists():
+                    existed += 1
+                    continue
+                StudentClassDetails.objects.create(
+                    id_classroom_id=classroom_id,
+                    id_student_id=id_student
+                )
+                added += 1
+
+        if added:
+            messages.success(request, f'Thêm {added} sinh viên vào lớp học thành công.')
+        if existed:
+            messages.warning(request, f'{existed} sinh viên đã tồn tại trong lớp học.')
         return redirect('admin_list_student_in_classroom', classroom_id)
     return render(request, 'admin/modal-popup/popup_add_student_in_class.html')
 

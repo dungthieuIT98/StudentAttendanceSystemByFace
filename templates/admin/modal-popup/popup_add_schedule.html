@@ -23,7 +23,7 @@
                         <div class="col-sm-9">
                             <div class="input-group">
                                 <div class="input-group">
-                                    <input type="text" class="form-control" id="begin_date" name="begin_date"
+                                    <input type="text" class="form-control datepicker" id="begin_date" name="begin_date"
                                            placeholder="dd/mm/yyyy"/>
                                     <div class="input-group-append">
                                         <span class="input-group-text h-100"><i class="mdi mdi-calendar"></i></span>
@@ -39,7 +39,7 @@
                             <div class="input-group">
                                 <div class="input-group">
                                     <div class="input-group">
-                                        <input type="text" class="form-control" id="end_date" name="end_date"
+                                        <input type="text" class="form-control datepicker" id="end_date" name="end_date"
                                                placeholder="dd/mm/yyyy"/>
                                         <div class="input-group-append">
                                             <span class="input-group-text h-100"><i class="mdi mdi-calendar"></i></span>
@@ -92,8 +92,12 @@
                         <label for="id_lecturer" class="col-sm-3 control-label col-form-label">Giảng viên</label>
                         <div class="col-sm-9">
                             <div class="input-group">
-                                <input type="text" class="form-control" name="id_lecturer" id="id_lecturer"
-                                       placeholder="Nhập mã giảng viên giảng dạy" required>
+                                <select class="form-select" name="id_lecturer" id="id_lecturer" required>
+                                    <option value="" selected disabled>Chọn giảng viên...</option>
+                                    {% for lecturer in list_lecturers %}
+                                        <option value="{{ lecturer.id_staff }}">{{ lecturer.id_staff }} - {{ lecturer.staff_name }}</option>
+                                    {% endfor %}
+                                </select>
                             </div>
                         </div>
                     </div>

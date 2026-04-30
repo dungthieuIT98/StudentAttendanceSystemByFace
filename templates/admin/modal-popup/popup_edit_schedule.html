@@ -9,30 +9,30 @@
                 <form id="editScheduleForm" method="POST" class="editScheduleForm" action="">
                     {% csrf_token %}
                     <div class="mb-3 form-group row d-flex justify-content-center">
-                        <label for="id_classroom" class="col-sm-3 control-label col-form-label">Mã môn học</label>
+                        <label for="id_classroom_edit" class="col-sm-3 control-label col-form-label">Mã môn học</label>
                         <div class="col-sm-9">
                             <div class="input-group">
-                                <input type="number" class="form-control" name="id_classroom" id="id_classroom"
-                                       required>
+                                <input type="number" class="form-control" name="id_classroom" id="id_classroom_edit"
+                                       required readonly>
                             </div>
                         </div>
                     </div>
 
                     <div class="mb-3 form-group row d-flex justify-content-center">
-                        <label for="name" class="col-sm-3 control-label col-form-label">Tên môn học</label>
+                        <label for="name_edit" class="col-sm-3 control-label col-form-label">Tên môn học</label>
                         <div class="col-sm-9">
                             <div class="input-group">
-                                <input type="text" class="form-control" name="name" id="name" required>
+                                <input type="text" class="form-control" name="name" id="name_edit" required>
                             </div>
                         </div>
                     </div>
 
                     <div class="mb-3 form-group row d-flex justify-content-center">
-                        <label for="begin_date" class="col-sm-3 control-label col-form-label">Ngày bắt đầu</label>
+                        <label for="begin_date_edit" class="col-sm-3 control-label col-form-label">Ngày bắt đầu</label>
                         <div class="col-sm-9">
                             <div class="input-group">
                                 <div class="input-group">
-                                    <input type="text" class="form-control" id="begin_date" name="begin_date"
+                                    <input type="text" class="form-control datepicker" id="begin_date_edit" name="begin_date"
                                            placeholder="dd/mm/yyyy"/>
                                     <div class="input-group-append">
                                         <span class="input-group-text h-100"><i class="mdi mdi-calendar"></i></span>
@@ -43,12 +43,12 @@
                     </div>
 
                     <div class="mb-3 form-group row d-flex justify-content-center">
-                        <label for="end_date" class="col-sm-3 control-label col-form-label">Ngày kết thúc</label>
+                        <label for="end_date_edit" class="col-sm-3 control-label col-form-label">Ngày kết thúc</label>
                         <div class="col-sm-9">
                             <div class="input-group">
                                 <div class="input-group">
                                     <div class="input-group">
-                                        <input type="text" class="form-control" id="end_date" name="end_date"
+                                        <input type="text" class="form-control datepicker" id="end_date_edit" name="end_date"
                                                placeholder="dd/mm/yyyy"/>
                                         <div class="input-group-append">
                                             <span class="input-group-text h-100"><i class="mdi mdi-calendar"></i></span>
@@ -60,10 +60,10 @@
                     </div>
 
                     <div class="mb-3 form-group row d-flex justify-content-center">
-                        <label for="day_of_week_begin" class="col-sm-3 control-label col-form-label">Thứ:</label>
+                        <label for="day_of_week_begin_edit" class="col-sm-3 control-label col-form-label">Thứ:</label>
                         <div class="col-sm-9">
                             <div class="input-group">
-                                <select class="form-select" name="day_of_week_begin" id="day_of_week_begin"
+                                <select class="form-select" name="day_of_week_begin" id="day_of_week_begin_edit"
                                         aria-label="Date of week begin">
                                     <option value="1">Thứ 2</option>
                                     <option value="2">Thứ 3</option>
@@ -78,31 +78,35 @@
                     </div>
 
                     <div class="mb-3 form-group row d-flex justify-content-center">
-                        <label for="begin_time" class="col-sm-3 control-label col-form-label">Thời gian bắt đầu</label>
+                        <label for="begin_time_edit" class="col-sm-3 control-label col-form-label">Thời gian bắt đầu</label>
                         <div class="col-sm-9">
                             <div class="input-group">
-                                <input type="text" class="form-control" name="begin_time" id="begin_time"
+                                <input type="time" class="form-control" name="begin_time" id="begin_time_edit"
                                        required>
                             </div>
                         </div>
                     </div>
 
                     <div class="mb-3 form-group row d-flex justify-content-center">
-                        <label for="end_time" class="col-sm-3 control-label col-form-label">Thời gian kết thúc</label>
+                        <label for="end_time_edit" class="col-sm-3 control-label col-form-label">Thời gian kết thúc</label>
                         <div class="col-sm-9">
                             <div class="input-group">
-                                <input type="text" class="form-control" name="end_time" id="end_time"
+                                <input type="time" class="form-control" name="end_time" id="end_time_edit"
                                        required>
                             </div>
                         </div>
                     </div>
 
                     <div class="mb-3 form-group row d-flex justify-content-center">
-                        <label for="end_time" class="col-sm-3 control-label col-form-label">Giảng viên</label>
+                        <label for="id_lecturer_edit" class="col-sm-3 control-label col-form-label">Giảng viên</label>
                         <div class="col-sm-9">
                             <div class="input-group">
-                                <input type="text" class="form-control" name="lecturer_name" id="lecturer_name"
-                                       required>
+                                <select class="form-select" name="id_lecturer" id="id_lecturer_edit" required>
+                                    <option value="" selected disabled>Chọn giảng viên...</option>
+                                    {% for lecturer in list_lecturers %}
+                                        <option value="{{ lecturer.id_staff }}">{{ lecturer.id_staff }} - {{ lecturer.staff_name }}</option>
+                                    {% endfor %}
+                                </select>
                             </div>
                         </div>
                     </div>

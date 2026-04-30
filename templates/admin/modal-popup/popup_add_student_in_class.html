@@ -10,11 +10,21 @@
                       action="{% url 'admin_list_student_in_class_add' classroom_id=classroom_id %}">
                     {% csrf_token %}
                     <div class="mb-3 form-group row d-flex justify-content-center">
-                        <label for="id_student" class="col-sm-3 control-label col-form-label">Tên lớp học</label>
+                        <label for="id_students" class="col-sm-3 control-label col-form-label">
+                            Chọn sinh viên
+                        </label>
                         <div class="col-sm-9">
                             <div class="input-group">
-                                <input type="text" class="form-control" name="id_student" id="id_student"
-                                       placeholder="Nhập mã số sinh viên" required>
+                                <select class="form-select" name="id_students" id="id_students" multiple required size="8">
+                                    {% for student in available_students %}
+                                        <option value="{{ student.id_student }}">
+                                            {{ student.student_name }} - {{ student.id_student }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="form-text text-muted small mt-1">
+                                Giữ Ctrl (hoặc Cmd) để chọn nhiều sinh viên.
                             </div>
                         </div>
                     </div>

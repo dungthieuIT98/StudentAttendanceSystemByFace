@@ -9,6 +9,7 @@
     <title>{% block title %}Face Attendance | Quản trị{% endblock %}</title>
     <link rel="icon" type="image/png" sizes="16x16" href="{% static 'assets/images/favicon.png' %}"/>
     <link href="{% static 'vendor/bootstrap/5.3.3/css/bootstrap.min.css' %}" rel="stylesheet"/>
+    <link href="{% static 'vendor/bootstrap-datepicker/css/bootstrap-datepicker.min.css' %}" rel="stylesheet"/>
     <link href="{% static 'vendor/mdi/css/materialdesignicons.min.css' %}" rel="stylesheet"/>
     <link href="{% static 'vendor/fontawesome/css/all.min.css' %}" rel="stylesheet"/>
     <link href="{% static 'assets/css/style.css' %}" rel="stylesheet"/>
@@ -203,7 +204,21 @@
             studentCapture: (id) => '/admin/student-management/student_capture/' + encodeURIComponent(id),
             studentTrain: '/admin/student-management/train',
             studentLiveVideoFeed: (id) => '/admin/student-management/live_video_feed/' + encodeURIComponent(id),
-            studentCheckCapture: '/admin/student-management/check_capture_status/'
+            studentCheckCapture: '/admin/student-management/check_capture_status/',
+            scheduleDelete: (id) => '/admin/schedule-management/delete/' + encodeURIComponent(id),
+            scheduleEdit: (id) => '/admin/schedule-management/edit/' + encodeURIComponent(id),
+            scheduleGetInfo: (id) => '/admin/schedule-management/get-info/' + encodeURIComponent(id),
+            notificationDelete: (id) => '/admin/notification-management/delete/' + encodeURIComponent(id) + '/',
+            notificationGetInfo: (id) => '/admin/notification-management/get-info/' + encodeURIComponent(id) + '/',
+            notificationEdit: (id) => '/admin/notification-management/edit-modal/' + encodeURIComponent(id) + '/',
+            studentInClassAdd: (classroomId) =>
+                '/admin/list-student-in-class-management/add/' + encodeURIComponent(classroomId),
+            studentInClassAddList: (classroomId) =>
+                '/admin/list-student-in-class-management/add-list/' + encodeURIComponent(classroomId),
+            studentInClassDelete: (classroomId, studentId) =>
+                '/admin/list-student-in-class-management/delete/' + encodeURIComponent(classroomId) + '/' + encodeURIComponent(studentId),
+            studentInClassDeleteAll: (classroomId) =>
+                '/admin/list-student-in-class-management/delete-all/' + encodeURIComponent(classroomId),
         };
         // =============================================
         // PSEUDO SPA NAVIGATION - AJAX + History API
@@ -342,6 +357,23 @@
             reinitializeComponents();
             console.log('%cSPA Navigation Initialized - Fixed sidebar/topbar, dynamic content updates', 'color:#10b981;font-weight:bold');
         }
+
+        // Click calendar icon to open datepicker (works with dynamic SPA content)
+        document.addEventListener('click', function(e) {
+            const trigger = e.target.closest('.input-group-text');
+            if (!trigger) return;
+            const group = trigger.closest('.input-group');
+            if (!group) return;
+            const input = group.querySelector("input.datepicker, input[data-datepicker='true'], input[id*='birthday'], input[id*='date']");
+            if (!input) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof $ !== 'undefined' && typeof $.fn.datepicker !== 'undefined') {
+                $(input).datepicker('show');
+            } else {
+                input.focus();
+            }
+        });
 
         // Bootstrap the SPA (compatible with existing jQuery)
         if (typeof $ !== 'undefined') {

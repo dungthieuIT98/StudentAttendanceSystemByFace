@@ -17,6 +17,10 @@ urlpatterns = [
     # Admin
     path('admin/notification-management', AddBlog.as_view(), name='admin_notification_view'),
     path('admin/notification-management/edit/<int:blog_post_id>/', EditBlogView.as_view(), name='edit_blog'),
+    path('admin/notification-management/get-info/<int:blog_post_id>/', admin_views.admin_notification_get_info,
+         name='admin_notification_get_info'),
+    path('admin/notification-management/edit-modal/<int:blog_post_id>/', admin_views.admin_notification_edit,
+         name='admin_notification_edit'),
     path('admin/notification-management/delete/<int:pk>/', BlogPostDeleteView.as_view(),
          name='admin_notification_delete'),
 

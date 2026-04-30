@@ -11,18 +11,16 @@
             <h3 class="card-title mb-3">Danh sách sinh viên</h3>
             {% for student in students_in_class %}
                 {% if forloop.first %}
-                    <a href="#" class="btn btn-success mdi mdi-account-plus text-white" id="deleteAllStudent"
-                       onclick="confirmDeleteAllStudentInClass({{ student.id_classroom.id_classroom }})">
+                    <a href="#" class="btn btn-success mdi mdi-account-plus text-white js-delete-all-students"
+                       data-classroom-id="{{ student.id_classroom.id_classroom }}">
                         Xóa tất cả sinh viên
                     </a>
                 {% endif %}
             {% endfor %}
-            <a href="{% url 'admin_list_student_in_class_add' classroom_id=classroom_id %}"
-               class="btn btn-success mdi mdi-account-plus text-white"
-               id="addStudentInClass">Thêm sinh viên
+            <a href="#" class="btn btn-success mdi mdi-account-plus text-white" id="addStudentInClass">
+                Thêm sinh viên
             </a>
-            <a href="{% url 'admin_list_student_in_class_add_list' classroom_id=classroom_id %}"
-               id="addListStudentInClass"
+            <a href="#" id="addListStudentInClass"
                class="btn btn-success mdi mdi-account-plus text-white">Thêm danh sách sinh viên
             </a>
         </div>
@@ -52,8 +50,9 @@
                         <td class="text-center">{{ student.id_student.birthday|date:"d/m/Y" }}</td>
                         <td class="text-center">{{ student.id_student.PathImageFolder }}</td>
                         <td class="text-center">
-                            <a href="#" class="btn btn-danger btn-sm mdi mdi-delete" id="deleteStudent"
-                               onclick="confirmDeleteStudentInClass({{ student.id_student.id_student }},{{ student.id_classroom.id_classroom }})">Xóa</a>
+                            <a href="#" class="btn btn-danger btn-sm mdi mdi-delete js-delete-student-in-class"
+                               data-student-id="{{ student.id_student.id_student|escapejs }}"
+                               data-classroom-id="{{ student.id_classroom.id_classroom }}">Xóa</a>
                         </td>
                     </tr>
 
@@ -110,23 +109,8 @@
 {% endblock %}
 
 {% block js %}
-    <script src="{% static '' %}assets/js/manage-student.js"></script>
-    <script src="{% static '' %}assets/js/manage-students-in-class.js"></script>
-    <script>
-        function confirmDeleteStudentInClass(studentId, classroomId) {
-            let deleteUrl = "{% url 'admin_list_student_in_class_delete' id_student=1 id_classroom=2 %}".replace('1', studentId).replace('2', classroomId);
-            $('#confirmDeleteButton').attr('href', deleteUrl);
-            $('#confirmDeleteModal').modal('show');
-            $('#studentIdToDelete').text(studentId);
-        }
-
-        function confirmDeleteAllStudentInClass(classroomId) {
-            let deleteUrl = "{% url 'admin_list_student_in_class_delete_all' id_classroom=2 %}".replace('2', classroomId);
-            $('#confirmDeleteAllButton').attr('href', deleteUrl);
-            $('#confirmDeleteAllModal').modal('show');
-        }
-
-    </script>
+    <script src="{% static 'assets/js/manage-student.js' %}"></script>
+    <script src="{% static 'assets/js/manage-students-in-class.js' %}"></script>
     <script>
         function addStudents() {
             var file_path = document.getElementById('file_path');

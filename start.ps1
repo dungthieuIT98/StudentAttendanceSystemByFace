@@ -1,5 +1,11 @@
 # Script khoi dong Django dev server
-# Chay: .\start.ps1
+# Chay:
+#   .\start.ps1            # mac dinh: auto-reload (khuyen nghi khi dev UI)
+#   .\start.ps1 -NoReload  # tat auto-reload (neu can)
+
+param(
+  [switch]$NoReload
+)
 
 $env:POSTGRES_DB       = 'face_attendance'
 $env:POSTGRES_USER     = 'postgres'
@@ -17,4 +23,8 @@ Write-Host "Dang kiem tra DB Docker..." -ForegroundColor Cyan
 docker compose up -d db | Out-Null
 
 Write-Host "Khoi dong Django tai http://127.0.0.1:8000/" -ForegroundColor Green
-& $python manage.py runserver
+if ($NoReload) {
+  & $python manage.py runserver --noreload
+} else {
+  & $python manage.py runserver
+}
