@@ -124,9 +124,11 @@ def main(id_subject):
         if isSuccess:
             image_bbox = model_test.get_bbox(frame)
             if image_bbox is not None:
-                x, y, w, h = (image_bbox[0]), (image_bbox[1] - 50), (image_bbox[0] + image_bbox[2]), (
-                        image_bbox[1] + image_bbox[3])
-                height, width, _ = frame.shape  # Giả sử frame là hình ảnh
+                frame_h, frame_w = frame.shape[:2]
+                x = max(0, image_bbox[0])
+                y = max(0, image_bbox[1] - 50)
+                w = min(frame_w, image_bbox[0] + image_bbox[2])
+                h = min(frame_h, image_bbox[1] + image_bbox[3])
 
                 # Chuyển đổi danh sách boxes thành danh sách bounding boxes kiểu int sử dụng map
 
@@ -155,17 +157,21 @@ def main(id_subject):
                     if cropped is not None and cropped.size > 0:
                         scaled = cv2.resize(cropped, (INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE),
                                             interpolation=cv2.INTER_CUBIC)
+                        scaled = cv2.cvtColor(scaled, cv2.COLOR_BGR2RGB)
                         scaled = facenet.prewhiten(scaled)
+                        print(f"[DEBUG] emb input shape={scaled.shape}, mean={scaled.mean():.3f}")
                         scaled_reshape = scaled.reshape(-1, INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE, 3)
                         feed_dict = {images_placeholder: scaled_reshape, phase_train_placeholder: False}
                         emb_array = sess.run(embeddings, feed_dict=feed_dict)
+                        print(f"[DEBUG] emb_array shape={emb_array.shape}, norm={np.linalg.norm(emb_array):.3f}")
                         predictions = model.predict_proba(emb_array)
                         best_class_indices = np.argmax(predictions, axis=1)
                         best_class_probabilities = predictions[
                             np.arange(len(best_class_indices)), best_class_indices]
                         best_name = class_names[best_class_indices[0]]
+                        print(f"[DEBUG] best_name={best_name}, prob={best_class_probabilities[0]:.4f}")
 
-                        if best_class_probabilities > 0.9:
+                        if best_class_probabilities > 0.6:
                             if best_name not in recognized_names:
                                 if current_face_name != best_name:
                                     current_face_name = best_name
@@ -173,7 +179,7 @@ def main(id_subject):
                                     justscanned = False
                                 elif not justscanned:
                                     current_face_progress += 1
-                                    progress = current_face_progress / 30
+                                    progress = current_face_progress / 10
                                     draw_progress_bar(frame, progress, x, y, w, h)
 
                                 cv2.rectangle(frame, (x, y), (w, h), (0, 255, 0), 2)
@@ -186,7 +192,7 @@ def main(id_subject):
                                             (text_x, text_y + 17), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1,
                                             (255, 255, 255), thickness=1, lineType=2)
 
-                                if current_face_progress >= 30:
+                                if current_face_progress >= 10:
                                     justscanned = True
                                     recognized_names.append(best_name)
                                     insert = insert_attendance(id_subject, best_name)

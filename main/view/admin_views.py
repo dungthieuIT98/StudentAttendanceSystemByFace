@@ -521,8 +521,11 @@ def capture(id, request):
             break
         image_bbox = model_test.get_bbox(frame)  # Assuming `get_bbox` returns the bounding box of the face
         if image_bbox is not None:
-            x, y, w, h = (image_bbox[0]), (image_bbox[1] - 50), (image_bbox[0] + image_bbox[2]), (
-                    image_bbox[1] + image_bbox[3])
+            frame_h, frame_w = frame.shape[:2]
+            x = max(0, image_bbox[0])
+            y = max(0, image_bbox[1] - 50)
+            w = min(frame_w, image_bbox[0] + image_bbox[2])
+            h = min(frame_h, image_bbox[1] + image_bbox[3])
 
             cropped_face = frame[y:h, x:w]
             if cropped_face is not None and cropped_face.size != 0:

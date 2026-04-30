@@ -86,16 +86,20 @@ class AntiSpoofPredict(Detection):
             self.model.load_state_dict(new_state_dict)
         else:
             self.model.load_state_dict(state_dict)
+        self.model.eval()
         return None
 
     def predict(self, img, model_path):
+        # Load model once per path, cache to avoid re-reading from disk every frame
+        if not hasattr(self, '_cached_model_path') or self._cached_model_path != model_path:
+            self._load_model(model_path)
+            self._cached_model_path = model_path
+
         test_transform = trans.Compose([
             trans.ToTensor(),
         ])
         img = test_transform(img)
         img = img.unsqueeze(0).to(self.device)
-        self._load_model(model_path)
-        self.model.eval()
         with torch.no_grad():
             result = self.model.forward(img)
             result = F.softmax(result, dim=1).cpu().numpy()
