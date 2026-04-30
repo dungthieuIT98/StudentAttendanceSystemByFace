@@ -1,4 +1,5 @@
 {% extends "admin/base_admin_dashboard.html" %}
+{% load static %}
 
 {% block content %}
     <div class="card">
@@ -19,7 +20,7 @@
             </div>
         </form>
 
-        <script src="https://cdn.ckeditor.com/4.17.2/standard/ckeditor.js"></script>
+        <script src="{% static 'vendor/ckeditor/ckeditor.js' %}"></script>
         <script>
             // Initialize CKEditor and set the initial content
             CKEDITOR.replace('id_body_edit', {

@@ -8,14 +8,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <title>Cổng thông tin sinh viên</title>
     <link rel="icon" type="image/png" sizes="16x16" href="{% static '' %}assets/images/favicon.png"/>
-    <link href="{% static '' %}dist/css/style.min.css" rel="stylesheet"/>
+    <link href="{% static 'vendor/bootstrap/5.3.3/css/bootstrap.min.css' %}" rel="stylesheet"/>
+    <link href="{% static 'vendor/mdi/css/materialdesignicons.min.css' %}" rel="stylesheet"/>
+    <link href="{% static 'vendor/fontawesome/css/all.min.css' %}" rel="stylesheet"/>
+    <link href="{% static 'vendor/perfect-scrollbar/css/perfect-scrollbar.css' %}" rel="stylesheet"/>
+    <link href="{% static 'vendor/node-waves/css/waves.min.css' %}" rel="stylesheet"/>
+    <link href="{% static 'vendor/bootstrap-datepicker/css/bootstrap-datepicker.min.css' %}" rel="stylesheet"/>
+    <link href="{% static 'dist/css/style.min.css' %}" rel="stylesheet"/>
     {% block css %}
     {% endblock %}
     <!-- HTML5 Shim and Respond.js IE8 support of HTML5 elements and media queries -->
     <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
     <!--[if lt IE 9]>
-    <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
-    <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
+    <script src="{% static 'vendor/html5shiv/html5shiv.js' %}"></script>
+    <script src="{% static 'vendor/respond/respond.min.js' %}"></script>
     <![endif]-->
 </head>
 
@@ -41,7 +47,7 @@
                     </span>
                 </a>
                 <a class="nav-toggler waves-effect waves-light d-block d-md-none" href="#">
-                    <i class="ti-menu ti-close"></i>
+                    <i class="mdi mdi-menu"></i>
                 </a>
             </div>
             <div class="navbar-collapse collapse" id="navbarSupportedContent" data-navbarbg="skin5">
@@ -129,14 +135,14 @@
         </footer>
     </div>
 </div>
-<script src="{% static '' %}assets/libs/jquery/dist/jquery.min.js"></script>
-<script src="{% static '' %}assets/libs/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
-<script src="{% static '' %}assets/libs/perfect-scrollbar/dist/perfect-scrollbar.jquery.min.js"></script>
-<script src="{% static '' %}assets/extra-libs/sparkline/sparkline.js"></script>
-<script src="{% static '' %}dist/js/waves.js"></script>
-<script src="{% static '' %}dist/js/sidebarmenu.js"></script>
-<script src="{% static '' %}dist/js/custom.min.js"></script>
-<script src="{% static '' %}assets/libs/bootstrap-datepicker/dist/js/bootstrap-datepicker.min.js"></script>
+<script src="{% static 'vendor/jquery/jquery.min.js' %}"></script>
+<script src="{% static 'vendor/bootstrap/5.3.3/js/bootstrap.bundle.min.js' %}"></script>
+<script src="{% static 'vendor/perfect-scrollbar/js/perfect-scrollbar.min.js' %}"></script>
+<script src="{% static 'assets/extra-libs/sparkline/sparkline.js' %}"></script>
+<script src="{% static 'vendor/node-waves/js/waves.min.js' %}"></script>
+<script src="{% static 'dist/js/sidebarmenu.js' %}"></script>
+<script src="{% static 'dist/js/custom.min.js' %}"></script>
+<script src="{% static 'vendor/bootstrap-datepicker/js/bootstrap-datepicker.min.js' %}"></script>
 {% block script %}
 {% endblock %}
 </body>

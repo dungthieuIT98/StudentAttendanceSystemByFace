@@ -2,9 +2,7 @@
 {% load static %}
 
 {% block css %}
-    <link rel="stylesheet" type="text/css"
-          href="{% static '' %}assets/libs/bootstrap-datepicker/dist/css/bootstrap-datepicker.min.css"/>
-    <link rel="stylesheet" type="text/css" href="{% static '' %}assets/libs/quill/dist/quill.snow.css"/>
+    <link rel="stylesheet" href="{% static 'vendor/quill/quill.snow.css' %}"/>
 {% endblock %}
 
 {% block content %}
@@ -94,6 +92,7 @@
             jQuery("#birthday").datepicker({
                 autoclose: true,
                 todayHighlight: true,
+                format: 'dd/mm/yyyy',
             });
         </script>
     {% endblock %}

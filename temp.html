@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Data Operations Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <div class="min-h-screen lg:flex">
+    <aside class="hidden w-64 shrink-0 border-r border-slate-200 bg-white lg:block">
+      <div class="flex h-16 items-center border-b border-slate-200 px-5">
+        <div>
+          <p class="text-sm font-semibold text-slate-900">DataOps</p>
+          <p class="text-xs text-slate-500">Internal Console</p>
+        </div>
+      </div>
+
+      <nav class="space-y-1 p-4 text-sm">
+        <a href="#" class="flex items-center rounded-lg bg-slate-100 px-3 py-2 font-medium text-slate-900">Dashboard</a>
+        <a href="#" class="flex items-center rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 hover:text-slate-900">Exports</a>
+        <a href="#" class="flex items-center rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 hover:text-slate-900">Schedules</a>
+        <a href="#" class="flex items-center rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 hover:text-slate-900">Approvals</a>
+        <a href="#" class="flex items-center rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 hover:text-slate-900">Logs</a>
+      </nav>
+    </aside>
+
+    <div class="flex min-w-0 flex-1 flex-col">
+      <header class="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur">
+        <div class="flex h-16 items-center justify-between px-4 sm:px-6">
+          <div>
+            <h1 class="text-lg font-semibold text-slate-950">Data Operations</h1>
+            <p class="text-sm text-slate-500">Monitor exports, review approvals, and catch delivery issues.</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="hidden rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 sm:inline-flex">Systems operational</span>
+            <button class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Today</button>
+          </div>
+        </div>
+      </header>
+
+      <main class="flex-1 p-4 sm:p-6">
+        <section class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <article class="rounded-lg border border-slate-200 bg-white p-5">
+            <p class="text-sm font-medium text-slate-500">Templates</p>
+            <div class="mt-3 flex items-end justify-between">
+              <p class="text-3xl font-semibold tracking-tight text-slate-950">42</p>
+              <p class="text-sm text-slate-500">6 active</p>
+            </div>
+          </article>
+
+          <article class="rounded-lg border border-slate-200 bg-white p-5">
+            <p class="text-sm font-medium text-slate-500">Datasets</p>
+            <div class="mt-3 flex items-end justify-between">
+              <p class="text-3xl font-semibold tracking-tight text-slate-950">18</p>
+              <p class="text-sm text-slate-500">2 stale</p>
+            </div>
+          </article>
+
+          <article class="rounded-lg border border-slate-200 bg-white p-5">
+            <p class="text-sm font-medium text-slate-500">Exports</p>
+            <div class="mt-3 flex items-end justify-between">
+              <p class="text-3xl font-semibold tracking-tight text-slate-950">2,842</p>
+              <p class="text-sm text-slate-500">94 today</p>
+            </div>
+          </article>
+
+          <article class="rounded-lg border border-slate-200 bg-white p-5">
+            <p class="text-sm font-medium text-slate-500">Emails</p>
+            <div class="mt-3 flex items-end justify-between">
+              <p class="text-3xl font-semibold tracking-tight text-slate-950">1,256</p>
+              <p class="text-sm text-slate-500">18 failed</p>
+            </div>
+          </article>
+        </section>
+
+        <section class="mt-6 grid gap-6 xl:grid-cols-12">
+          <div class="space-y-6 xl:col-span-8">
+            <section class="rounded-lg border border-slate-200 bg-white p-5">
+              <div class="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 class="text-base font-semibold text-slate-950">Email Delivery</h2>
+                  <p class="mt-1 text-sm text-slate-500">Current day delivery health.</p>
+                  <p class="mt-3 text-sm text-slate-500">
+                    Failure rate <span class="font-medium text-red-700">1.4%</span>. Review failed logs before the next scheduled send.
+                  </p>
+                </div>
+
+                <div class="flex items-center gap-5">
+                  <div class="relative h-24 w-24 shrink-0 rounded-full" style="background: conic-gradient(#059669 0 98.6%, #dc2626 98.6% 100%);">
+                    <div class="absolute inset-3 flex items-center justify-center rounded-full bg-white">
+                      <span class="text-sm font-semibold text-slate-950">98.6%</span>
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-2 gap-3">
+                    <div class="rounded-lg border border-slate-200 px-4 py-3">
+                      <p class="text-xs font-medium text-slate-500">Success</p>
+                      <p class="mt-1 text-xl font-semibold text-emerald-700">1,238</p>
+                    </div>
+                    <div class="rounded-lg border border-slate-200 px-4 py-3">
+                      <p class="text-xs font-medium text-slate-500">Failed</p>
+                      <p class="mt-1 text-xl font-semibold text-red-700">18</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="rounded-lg border border-slate-200 bg-white p-5">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 class="text-base font-semibold text-slate-950">Export Activity</h2>
+                  <p class="mt-1 text-sm text-slate-500">Completed exports by period.</p>
+                </div>
+                <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+                  <button data-period="weekly" class="period-toggle rounded-md bg-white px-3 py-1.5 text-sm font-medium text-slate-900 shadow-sm">Weekly</button>
+                  <button data-period="monthly" class="period-toggle rounded-md px-3 py-1.5 text-sm font-medium text-slate-500">Monthly</button>
+                </div>
+              </div>
+
+              <div id="exportChart" class="mt-6 flex h-72 items-end gap-3 border-b border-l border-slate-200 px-2 pb-3 sm:gap-4"></div>
+            </section>
+
+            <section class="rounded-lg border border-slate-200 bg-white">
+              <div class="border-b border-slate-200 p-5">
+                <h2 class="text-base font-semibold text-slate-950">Operations Log</h2>
+                <p class="mt-1 text-sm text-slate-500">Combined email schedule and export activity timeline.</p>
+              </div>
+
+              <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-slate-200 text-sm">
+                  <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th class="px-5 py-3">Time</th>
+                      <th class="px-5 py-3">Type</th>
+                      <th class="px-5 py-3">Name</th>
+                      <th class="px-5 py-3">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100 bg-white">
+                    <tr>
+                      <td class="whitespace-nowrap px-5 py-4 text-slate-500">09:22</td>
+                      <td class="px-5 py-4"><span class="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">Export</span></td>
+                      <td class="px-5 py-4 font-medium text-slate-900">Orders warehouse export</td>
+                      <td class="px-5 py-4"><span class="rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">Completed</span></td>
+                    </tr>
+                    <tr id="schedule-weekly-revenue" class="scroll-mt-24 transition-colors">
+                      <td class="whitespace-nowrap px-5 py-4 text-slate-500">09:18</td>
+                      <td class="px-5 py-4"><span class="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">Email</span></td>
+                      <td class="px-5 py-4 font-medium text-slate-900">Weekly revenue extract</td>
+                      <td class="px-5 py-4"><span class="rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">Delivered</span></td>
+                    </tr>
+                    <tr>
+                      <td class="whitespace-nowrap px-5 py-4 text-slate-500">09:07</td>
+                      <td class="px-5 py-4"><span class="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">Export</span></td>
+                      <td class="px-5 py-4 font-medium text-slate-900">Partner compliance file</td>
+                      <td class="px-5 py-4"><span class="rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">Waiting approval</span></td>
+                    </tr>
+                    <tr id="schedule-partner-compliance" class="scroll-mt-24 transition-colors">
+                      <td class="whitespace-nowrap px-5 py-4 text-slate-500">09:04</td>
+                      <td class="px-5 py-4"><span class="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">Email</span></td>
+                      <td class="px-5 py-4 font-medium text-slate-900">Partner compliance file</td>
+                      <td class="px-5 py-4"><span class="rounded-full bg-red-50 px-2 py-1 text-xs font-medium text-red-700">Failed</span></td>
+                    </tr>
+                    <tr>
+                      <td class="whitespace-nowrap px-5 py-4 text-slate-500">08:49</td>
+                      <td class="px-5 py-4"><span class="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">Export</span></td>
+                      <td class="px-5 py-4 font-medium text-slate-900">Customer segment snapshot</td>
+                      <td class="px-5 py-4"><span class="rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">Completed</span></td>
+                    </tr>
+                    <tr id="schedule-daily-customer" class="scroll-mt-24 transition-colors">
+                      <td class="whitespace-nowrap px-5 py-4 text-slate-500">08:42</td>
+                      <td class="px-5 py-4"><span class="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">Email</span></td>
+                      <td class="px-5 py-4 font-medium text-slate-900">Daily customer sync</td>
+                      <td class="px-5 py-4"><span class="rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">Delivered</span></td>
+                    </tr>
+                    <tr>
+                      <td class="whitespace-nowrap px-5 py-4 text-slate-500">08:26</td>
+                      <td class="px-5 py-4"><span class="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">Export</span></td>
+                      <td class="px-5 py-4 font-medium text-slate-900">Inventory delta report</td>
+                      <td class="px-5 py-4"><span class="rounded-full bg-red-50 px-2 py-1 text-xs font-medium text-red-700">Failed</span></td>
+                    </tr>
+                    <tr id="schedule-inventory-delta" class="scroll-mt-24 transition-colors">
+                      <td class="whitespace-nowrap px-5 py-4 text-slate-500">08:15</td>
+                      <td class="px-5 py-4"><span class="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">Email</span></td>
+                      <td class="px-5 py-4 font-medium text-slate-900">Inventory delta report</td>
+                      <td class="px-5 py-4"><span class="rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">Queued</span></td>
+                    </tr>
+                    <tr id="schedule-finance-close" class="scroll-mt-24 transition-colors">
+                      <td class="whitespace-nowrap px-5 py-4 text-slate-500">07:58</td>
+                      <td class="px-5 py-4"><span class="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">Email</span></td>
+                      <td class="px-5 py-4 font-medium text-slate-900">Finance close packet</td>
+                      <td class="px-5 py-4"><span class="rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">Delivered</span></td>
+                    </tr>
+                    <tr>
+                      <td class="whitespace-nowrap px-5 py-4 text-slate-500">07:44</td>
+                      <td class="px-5 py-4"><span class="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">Export</span></td>
+                      <td class="px-5 py-4 font-medium text-slate-900">Finance close packet</td>
+                      <td class="px-5 py-4"><span class="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">Processing</span></td>
+                    </tr>
+                    <tr id="schedule-churn-model" class="scroll-mt-24 transition-colors">
+                      <td class="whitespace-nowrap px-5 py-4 text-slate-500">07:31</td>
+                      <td class="px-5 py-4"><span class="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">Email</span></td>
+                      <td class="px-5 py-4 font-medium text-slate-900">Churn model export</td>
+                      <td class="px-5 py-4"><span class="rounded-full bg-red-50 px-2 py-1 text-xs font-medium text-red-700">Failed</span></td>
+                    </tr>
+                    <tr id="schedule-regional-sales" class="scroll-mt-24 transition-colors">
+                      <td class="whitespace-nowrap px-5 py-4 text-slate-500">07:06</td>
+                      <td class="px-5 py-4"><span class="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">Email</span></td>
+                      <td class="px-5 py-4 font-medium text-slate-900">Regional sales bundle</td>
+                      <td class="px-5 py-4"><span class="rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">Queued</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+
+          <aside class="space-y-6 xl:col-span-4">
+            <section class="rounded-lg border border-amber-200 bg-white">
+              <div class="border-b border-amber-100 p-5">
+                <div class="flex items-center justify-between gap-4">
+                  <div>
+                    <h2 class="text-base font-semibold text-slate-950">Pending Approval</h2>
+                    <p class="mt-1 text-sm text-slate-500">Review before the next export window.</p>
+                  </div>
+                  <span class="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">6 open</span>
+                </div>
+              </div>
+
+              <div class="divide-y divide-slate-100">
+                <div class="p-4">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <p class="font-medium text-slate-950">Partner compliance file</p>
+                      <p class="mt-1 text-sm text-slate-500">09:30 window · Maya Chen</p>
+                    </div>
+                  </div>
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    <button data-schedule-target="schedule-partner-compliance" class="schedule-link rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Schedule</button>
+                  </div>
+                </div>
+
+                <div class="p-4">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <p class="font-medium text-slate-950">Finance close packet</p>
+                      <p class="mt-1 text-sm text-slate-500">10:00 window · Omar Ruiz</p>
+                    </div>
+                  </div>
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    <button data-schedule-target="schedule-finance-close" class="schedule-link rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Schedule</button>
+                  </div>
+                </div>
+
+                <div class="p-4">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <p class="font-medium text-slate-950">Churn model export</p>
+                      <p class="mt-1 text-sm text-slate-500">11:15 window · Nina Patel</p>
+                    </div>
+                  </div>
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    <button data-schedule-target="schedule-churn-model" class="schedule-link rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Schedule</button>
+                  </div>
+                </div>
+
+                <div class="p-4">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <p class="font-medium text-slate-950">Regional sales bundle</p>
+                      <p class="mt-1 text-sm text-slate-500">13:00 window · Leo Martin</p>
+                    </div>
+                  </div>
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    <button data-schedule-target="schedule-regional-sales" class="schedule-link rounded-md border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Schedule</button>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </aside>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const chartData = {
+      weekly: [
+        { label: 'Mon', value: 42 },
+        { label: 'Tue', value: 58 },
+        { label: 'Wed', value: 51 },
+        { label: 'Thu', value: 73 },
+        { label: 'Fri', value: 65 },
+        { label: 'Sat', value: 28 },
+        { label: 'Sun', value: 34 }
+      ],
+      monthly: [
+        { label: 'W1', value: 210 },
+        { label: 'W2', value: 276 },
+        { label: 'W3', value: 245 },
+        { label: 'W4', value: 318 }
+      ]
+    };
+
+    const chart = document.getElementById('exportChart');
+    const toggleButtons = document.querySelectorAll('.period-toggle');
+
+    function renderChart(period) {
+      const data = chartData[period];
+      const maxValue = Math.max(...data.map((item) => item.value));
+
+      chart.innerHTML = data.map((item) => {
+        const height = Math.round((item.value / maxValue) * 100);
+
+        return `
+          <div class="flex h-full flex-1 flex-col items-center justify-end gap-2">
+            <div class="text-xs font-medium text-slate-500">${item.value}</div>
+            <div class="w-full rounded-t-md bg-slate-900 transition-all duration-300" style="height: ${height}%"></div>
+            <div class="text-xs font-medium text-slate-500">${item.label}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    toggleButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        toggleButtons.forEach((item) => {
+          item.classList.remove('bg-white', 'text-slate-900', 'shadow-sm');
+          item.classList.add('text-slate-500');
+        });
+
+        button.classList.add('bg-white', 'text-slate-900', 'shadow-sm');
+        button.classList.remove('text-slate-500');
+        renderChart(button.dataset.period);
+      });
+    });
+
+    document.querySelectorAll('.schedule-link').forEach((button) => {
+      button.addEventListener('click', () => {
+        const row = document.getElementById(button.dataset.scheduleTarget);
+
+        if (!row) return;
+
+        document.querySelectorAll('[id^="schedule-"]').forEach((item) => {
+          item.classList.remove('bg-amber-50');
+        });
+
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        row.classList.add('bg-amber-50');
+
+        window.setTimeout(() => {
+          row.classList.remove('bg-amber-50');
+        }, 2500);
+      });
+    });
+
+    renderChart('weekly');
+  </script>
+</body>
+</html>

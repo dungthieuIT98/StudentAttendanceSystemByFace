@@ -359,8 +359,8 @@ def admin_schedule_management_view(request):
 def admin_schedule_add(request):
     if request.method == 'POST':
         name = request.POST['name']
-        begin_date = datetime.strptime(request.POST['begin_date'], '%d/%m/%Y').date()
-        end_date = datetime.strptime(request.POST['end_date'], '%d/%m/%Y').date()
+        begin_date = datetime.strptime(request.POST['begin_date'], '%m/%d/%Y').date()
+        end_date = datetime.strptime(request.POST['end_date'], '%m/%d/%Y').date()
         day_of_week_begin = request.POST['day_of_week_begin']
         begin_time = request.POST['begin_time']
         end_time = request.POST['end_time']
@@ -383,8 +383,8 @@ def admin_schedule_edit(request, id_classroom):
     context = {'schedule': schedule}
     if request.method == 'POST':
         schedule.name = request.POST['name']
-        schedule.begin_date = datetime.strptime(request.POST['begin_date'], '%d/%m/%Y').date()
-        schedule.end_date = datetime.strptime(request.POST['end_date'], '%d/%m/%Y').date()
+        schedule.begin_date = datetime.strptime(request.POST['begin_date'], '%m/%d/%Y').date()
+        schedule.end_date = datetime.strptime(request.POST['end_date'], '%m/%d/%Y').date()
         schedule.day_of_week_begin = request.POST['day_of_week_begin']
         schedule.begin_time = request.POST['begin_time']
         schedule.end_time = request.POST['end_time']

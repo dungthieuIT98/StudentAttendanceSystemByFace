@@ -1,0 +1,7 @@
+/* multicheck.css — stub; checkboxes handled via Bootstrap 5 form-check */
+table.dataTable tbody input[type="checkbox"] {
+    cursor: pointer;
+}
+table.dataTable thead input[type="checkbox"] {
+    cursor: pointer;
+}
