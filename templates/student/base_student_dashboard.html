@@ -1,150 +1,319 @@
+{% load static %}
+{% if request.META.HTTP_X_REQUESTED_WITH != 'XMLHttpRequest' %}
 <!DOCTYPE html>
 <html dir="ltr" lang="vi">
-
 <head>
-    {% load static %}
     <meta charset="utf-8"/>
     <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <title>Cổng thông tin sinh viên</title>
-    <link rel="icon" type="image/png" sizes="16x16" href="{% static '' %}assets/images/favicon.png"/>
+    <title>{% block title %}Face Attendance | Sinh viên{% endblock %}</title>
+    <link rel="icon" type="image/png" sizes="16x16" href="{% static 'assets/images/favicon.png' %}"/>
     <link href="{% static 'vendor/bootstrap/5.3.3/css/bootstrap.min.css' %}" rel="stylesheet"/>
     <link href="{% static 'vendor/mdi/css/materialdesignicons.min.css' %}" rel="stylesheet"/>
     <link href="{% static 'vendor/fontawesome/css/all.min.css' %}" rel="stylesheet"/>
-    <link href="{% static 'vendor/perfect-scrollbar/css/perfect-scrollbar.css' %}" rel="stylesheet"/>
-    <link href="{% static 'vendor/node-waves/css/waves.min.css' %}" rel="stylesheet"/>
-    <link href="{% static 'vendor/bootstrap-datepicker/css/bootstrap-datepicker.min.css' %}" rel="stylesheet"/>
-    <link href="{% static 'dist/css/style.min.css' %}" rel="stylesheet"/>
+    <link href="{% static 'assets/css/style.css' %}" rel="stylesheet"/>
     {% block css %}
     {% endblock %}
-    <!-- HTML5 Shim and Respond.js IE8 support of HTML5 elements and media queries -->
-    <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
-    <!--[if lt IE 9]>
-    <script src="{% static 'vendor/html5shiv/html5shiv.js' %}"></script>
-    <script src="{% static 'vendor/respond/respond.min.js' %}"></script>
-    <![endif]-->
 </head>
+<body class="dashboard-body">
+    <!-- Modern Topbar - Consistent across roles -->
+    <nav class="topbar navbar navbar-expand-lg navbar-light bg-white border-bottom shadow-sm fixed-top">
+        <div class="container-fluid px-4 py-3">
+            <a class="navbar-brand d-flex align-items-center gap-3 fw-semibold text-primary fs-4" href="{% url 'student_dashboard' %}">
+                <i class="mdi mdi-face-recognition fs-3"></i>
+                <span class="d-none d-md-inline">Face Attendance</span>
+            </a>
+            
+            <button class="navbar-toggler border-0 d-lg-none" type="button" data-bs-toggle="offcanvas" 
+                    data-bs-target="#sidebarOffcanvas" aria-controls="sidebarOffcanvas">
+                <i class="mdi mdi-menu fs-3"></i>
+            </button>
 
-<body>
-<div class="preloader">
-    <div class="lds-ripple">
-        <div class="lds-pos"></div>
-        <div class="lds-pos"></div>
-    </div>
-</div>
-<div id="main-wrapper" data-layout="vertical" data-navbarbg="skin5" data-sidebartype="full"
-     data-sidebar-position="absolute" data-header-position="absolute" data-boxed-layout="full">
-    <header class="topbar" data-navbarbg="skin5">
-        <nav class="navbar top-navbar navbar-expand-md navbar-dark">
-            <div class="navbar-header" data-logobg="skin5">
-                <a class="navbar-brand" href="{% url 'student_dashboard' %}">
-                    <b class="logo-icon ps-2">
-                        <img src="{% static '' %}assets/images/favicon.png" alt="homepage" class="light-logo"
-                             width="25"/>
-                    </b>
-                    <span class="logo-text ms-2">
-                        <img src="{% static '' %}assets/images/logo-text.png" alt="homepage" class="light-logo"/>
-                    </span>
-                </a>
-                <a class="nav-toggler waves-effect waves-light d-block d-md-none" href="#">
-                    <i class="mdi mdi-menu"></i>
-                </a>
+            <div class="ms-auto d-flex align-items-center gap-3">
+                <div class="dropdown">
+                    <a class="nav-link dropdown-toggle d-flex align-items-center gap-2 p-1 text-dark text-decoration-none" 
+                       href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <img src="{% static 'assets/images/users/1.jpg' %}" alt="user" class="rounded-circle border shadow-sm" width="34" height="34">
+                        <div class="d-none d-sm-block text-start">
+                            <div class="fw-semibold small">Sinh viên</div>
+                            <div class="text-success small" style="font-size: 0.7rem;">Online</div>
+                        </div>
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end shadow border-0 py-2" style="min-width: 200px;">
+                        <li>
+                            <a class="dropdown-item d-flex align-items-center gap-2 py-2.5" href="{% url 'student_profile' %}">
+                                <i class="mdi mdi-account-circle fs-5"></i>
+                                <span>Quản lý hồ sơ</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item d-flex align-items-center gap-2 py-2.5" href="{% url 'student_change_password' %}">
+                                <i class="mdi mdi-lock fs-5"></i>
+                                <span>Đổi mật khẩu</span>
+                            </a>
+                        </li>
+                        <li class="dropdown-divider my-1"></li>
+                        <li>
+                            <a class="dropdown-item d-flex align-items-center gap-2 py-2.5 text-danger" href="{% url 'logout' %}">
+                                <i class="mdi mdi-logout fs-5"></i>
+                                <span>Đăng xuất</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
             </div>
-            <div class="navbar-collapse collapse" id="navbarSupportedContent" data-navbarbg="skin5">
-                <ul class="navbar-nav float-start me-auto">
-                    <li class="nav-item d-none d-lg-block">
-                        <span class="nav-link sidebartoggler waves-effect waves-light" Fdata-sidebartype="mini-sidebar">
-                            <i class="mdi mdi-menu font-24"></i>
-                        </span>
-                    </li>
-                </ul>
-                <ul class="navbar-nav float-end">
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle text-muted waves-effect waves-dark pro-pic" href="#"
-                           id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <img src="{% static '' %}assets/images/users/1.jpg" alt="user" class="rounded-circle"
-                                 width="31"/>
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-end user-dd animated" aria-labelledby="navbarDropdown">
-                            <li>
-                                <a class="dropdown-item" href="{% url 'student_profile' %}">
-                                    <i class="mdi mdi-account me-1 ms-1"></i>Quản lý hồ sơ
-                                </a>
-                                <div class="dropdown-divider"></div>
-                            </li>
-                            <li>
-                                <a class="dropdown-item" href="{% url 'student_change_password' %}">
-                                    <i class="mdi mdi-settings me-1 ms-1"></i>Đổi mật khẩu
-                                </a>
-                                <div class="dropdown-divider"></div>
-                            </li>
-                            <li>
-                                <a class="dropdown-item" href="{% url 'logout' %}">
-                                    <i class="fa fa-power-off me-1 ms-1"></i>Đăng xuất
-                                </a>
-                            </li>
-                        </ul>
-                    </li>
-                </ul>
-            </div>
+        </div>
+    </nav>
+
+    <!-- Desktop Sidebar for Student -->
+    <div class="dashboard-sidebar-pane d-none d-lg-block position-fixed top-0 bottom-0 start-0 bg-white border-end shadow-sm">
+        <nav class="sidebar-nav h-100 overflow-auto" style="padding-top: 1.5rem;">
+            <ul class="list-unstyled px-3">
+                <li class="mb-1">
+                    <a href="{% url 'student_dashboard' %}" class="sidebar-link d-flex align-items-center gap-3 px-4 py-3 rounded-3 text-decoration-none">
+                        <i class="mdi mdi-view-dashboard fs-5"></i>
+                        <span class="fw-medium">Trang chủ</span>
+                    </a>
+                </li>
+                <li class="mb-1">
+                    <a href="{% url 'student_schedule' %}" class="sidebar-link d-flex align-items-center gap-3 px-4 py-3 rounded-3 text-decoration-none">
+                        <i class="mdi mdi-calendar fs-5"></i>
+                        <span class="fw-medium">Thời khóa biểu</span>
+                    </a>
+                </li>
+                <li class="mb-1">
+                    <a href="{% url 'student_checkpoint' %}" class="sidebar-link d-flex align-items-center gap-3 px-4 py-3 rounded-3 text-decoration-none">
+                        <i class="mdi mdi-chart-bar fs-5"></i>
+                        <span class="fw-medium">Điểm quá trình</span>
+                    </a>
+                </li>
+                <li class="mb-1">
+                    <a href="{% url 'student_list_classroom' %}" class="sidebar-link d-flex align-items-center gap-3 px-4 py-3 rounded-3 text-decoration-none">
+                        <i class="mdi mdi-history fs-5"></i>
+                        <span class="fw-medium">Lịch sử điểm danh</span>
+                    </a>
+                </li>
+            </ul>
         </nav>
-    </header>
-    <aside class="left-sidebar" data-sidebarbg="skin5">
-        <div class="scroll-sidebar">
-            <nav class="sidebar-nav">
-                <ul id="sidebarnav" class="pt-4">
-                    <li class="sidebar-item">
-                        <a class="sidebar-link waves-effect waves-dark"
-                           href="{% url 'student_dashboard' %}" aria-expanded="false">
-                            <i class="mdi mdi-home"></i>
-                            <span class="hide-menu">Trang chủ</span>
+        <div class="position-absolute bottom-0 start-0 end-0 p-4 text-center border-top">
+            <div class="text-muted small">
+                © HUTECH • 2026
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile Offcanvas -->
+    <div class="offcanvas offcanvas-start" tabindex="-1" id="sidebarOffcanvas" aria-labelledby="sidebarOffcanvasLabel" style="width: 260px;">
+        <div class="offcanvas-header border-bottom">
+            <h5 class="offcanvas-title d-flex align-items-center gap-2 text-primary" id="sidebarOffcanvasLabel">
+                <i class="mdi mdi-face-recognition"></i>
+                Face Attendance
+            </h5>
+            <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+        </div>
+        <div class="offcanvas-body p-0">
+            <nav class="sidebar-nav pt-3">
+                <ul class="list-unstyled px-3">
+                    <li class="mb-1">
+                        <a href="{% url 'student_dashboard' %}" class="sidebar-link d-flex align-items-center gap-3 px-4 py-3 rounded-3 text-decoration-none">
+                            <i class="mdi mdi-view-dashboard fs-5"></i>
+                            <span class="fw-medium">Trang chủ</span>
                         </a>
                     </li>
-                    <li class="sidebar-item">
-                        <a class="sidebar-link waves-effect waves-dark"
-                           href="{% url 'student_schedule' %}" aria-expanded="false">
-                            <i class="mdi mdi-calendar"></i>
-                            <span class="hide-menu">Thời khóa biểu</span>
+                    <li class="mb-1">
+                        <a href="{% url 'student_schedule' %}" class="sidebar-link d-flex align-items-center gap-3 px-4 py-3 rounded-3 text-decoration-none">
+                            <i class="mdi mdi-calendar fs-5"></i>
+                            <span class="fw-medium">Thời khóa biểu</span>
                         </a>
                     </li>
-                    <li class="sidebar-item">
-                        <a class="sidebar-link waves-effect waves-dark"
-                           href="{% url 'student_checkpoint' %}" aria-expanded="false">
-                            <i class="mdi mdi-format-list-bulleted"></i>
-                            <span class="hide-menu">Điểm quá trình</span>
+                    <li class="mb-1">
+                        <a href="{% url 'student_checkpoint' %}" class="sidebar-link d-flex align-items-center gap-3 px-4 py-3 rounded-3 text-decoration-none">
+                            <i class="mdi mdi-chart-bar fs-5"></i>
+                            <span class="fw-medium">Điểm quá trình</span>
                         </a>
                     </li>
-                    <li class="sidebar-item">
-                        <a class="sidebar-link waves-effect waves-dark"
-                           href="{% url 'student_list_classroom' %}" aria-expanded="false">
-                            <i class="mdi mdi-clock"></i>
-                            <span class="hide-menu">Lịch sử điểm danh</span>
+                    <li class="mb-1">
+                        <a href="{% url 'student_list_classroom' %}" class="sidebar-link d-flex align-items-center gap-3 px-4 py-3 rounded-3 text-decoration-none">
+                            <i class="mdi mdi-history fs-5"></i>
+                            <span class="fw-medium">Lịch sử điểm danh</span>
                         </a>
                     </li>
                 </ul>
             </nav>
         </div>
-    </aside>
-    <div class="page-wrapper">
-        <div class="container-fluid">
+    </div>
+
+    <!-- Main Content - SPA Target -->
+    <main class="dashboard-main flex-grow-1">
+        <div id="main-content" class="saas-container px-4 px-lg-5 py-4">
+{% endif %}
             {% block content %}
             {% endblock %}
+{% if request.META.HTTP_X_REQUESTED_WITH != 'XMLHttpRequest' %}
         </div>
-        <footer class="footer text-center">
-            Attendance system was built and developed by HUTECH students
+        
+        <footer class="bg-white border-top py-4 text-center text-muted small mt-auto">
+            Attendance system was built and developed by HUTECH students • Refined SaaS UI
         </footer>
-    </div>
-</div>
-<script src="{% static 'vendor/jquery/jquery.min.js' %}"></script>
-<script src="{% static 'vendor/bootstrap/5.3.3/js/bootstrap.bundle.min.js' %}"></script>
-<script src="{% static 'vendor/perfect-scrollbar/js/perfect-scrollbar.min.js' %}"></script>
-<script src="{% static 'assets/extra-libs/sparkline/sparkline.js' %}"></script>
-<script src="{% static 'vendor/node-waves/js/waves.min.js' %}"></script>
-<script src="{% static 'dist/js/sidebarmenu.js' %}"></script>
-<script src="{% static 'dist/js/custom.min.js' %}"></script>
-<script src="{% static 'vendor/bootstrap-datepicker/js/bootstrap-datepicker.min.js' %}"></script>
+    </main>
+
+    <!-- Scripts - SPA Navigation + Core Libraries -->
+    <script src="{% static 'vendor/jquery/jquery.min.js' %}"></script>
+    <script src="{% static 'vendor/bootstrap/5.3.3/js/bootstrap.bundle.min.js' %}"></script>
+    <script src="{% static 'vendor/sweetalert2/sweetalert2.all.min.js' %}"></script>
+    <script src="{% static 'vendor/bootstrap-datepicker/js/bootstrap-datepicker.min.js' %}"></script>
+    <script>
+        // =============================================
+        // PSEUDO SPA NAVIGATION - AJAX + History API
+        // Keeps sidebar/topbar fixed, updates only #main-content
+        // =============================================
+        let isLoading = false;
+
+        function showLoading() {
+            const content = document.getElementById('main-content');
+            if (content) {
+                content.style.transition = 'opacity 0.3s ease';
+                content.style.opacity = '0.6';
+            }
+            let spinner = document.getElementById('spa-loader');
+            if (!spinner) {
+                spinner = document.createElement('div');
+                spinner.id = 'spa-loader';
+                spinner.style.cssText = 'position:fixed;top:40%;left:50%;transform:translate(-50%,-50%);z-index:99999;background:rgba(255,255,255,0.95);padding:1.5rem 2rem;border-radius:12px;box-shadow:0 10px 25px rgba(0,0,0,0.15);display:flex;align-items:center;gap:12px;';
+                spinner.innerHTML = `
+                    <div class="spinner-border text-primary" style="width:1.5rem;height:1.5rem;" role="status"></div>
+                    <span class="text-muted fw-medium small">Đang tải trang...</span>
+                `;
+                document.body.appendChild(spinner);
+            }
+            spinner.style.display = 'flex';
+        }
+
+        function hideLoading() {
+            const content = document.getElementById('main-content');
+            if (content) content.style.opacity = '1';
+            const spinner = document.getElementById('spa-loader');
+            if (spinner) spinner.style.display = 'none';
+        }
+
+        function updateActiveSidebar() {
+            const currentPath = window.location.pathname;
+            document.querySelectorAll('.sidebar-link').forEach(link => {
+                const href = link.getAttribute('href') || '';
+                link.classList.remove('active', 'bg-primary', 'text-white');
+                if (href && (currentPath.includes(href) || currentPath === href || href.includes(currentPath.split('?')[0]))) {
+                    link.classList.add('active', 'bg-primary', 'text-white');
+                }
+            });
+        }
+
+        function reinitializeComponents() {
+            // Re-initialize jQuery datepickers and other UI components after content update
+            if (typeof $ !== 'undefined' && typeof $.fn.datepicker !== 'undefined') {
+                $("[id*='date'], .datepicker").datepicker({
+                    autoclose: true,
+                    todayHighlight: true,
+                    format: 'dd/mm/yyyy',
+                    language: 'vi'
+                });
+            }
+            // Trigger event for page-specific scripts (e.g. face detection UI, modals)
+            document.dispatchEvent(new CustomEvent('spa:content-loaded', {
+                detail: { url: window.location.pathname, isAjax: true }
+            }));
+        }
+
+        function navigateTo(url) {
+            if (isLoading || !document.getElementById('main-content')) return;
+            isLoading = true;
+            showLoading();
+
+            fetch(url, {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => {
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return response.text();
+            })
+            .then(html => {
+                hideLoading();
+                const mainContentEl = document.getElementById('main-content');
+                mainContentEl.innerHTML = html.trim();
+                history.pushState({url: url}, document.title || '', url);
+                updateActiveSidebar();
+                reinitializeComponents();
+                isLoading = false;
+            })
+            .catch(err => {
+                console.error('SPA Navigation Error:', err);
+                hideLoading();
+                const mainContentEl = document.getElementById('main-content');
+                mainContentEl.innerHTML = `
+                    <div class="alert alert-danger p-4 m-4">
+                        <i class="mdi mdi-alert-circle fs-3 d-block mb-3"></i>
+                        <h5>Không thể tải trang</h5>
+                        <p class="mb-3">${err.message}</p>
+                        <a href="${url}" class="btn btn-primary">Thử tải lại</a>
+                    </div>
+                `;
+                isLoading = false;
+            });
+        }
+
+        function initializeSPA() {
+            // Intercept internal navigation links (sidebar, menus, etc.)
+            document.addEventListener('click', function(e) {
+                const link = e.target.closest('a');
+                if (!link) return;
+                let href = link.getAttribute('href');
+                if (!href || href.startsWith('#') || href.startsWith('javascript:') || 
+                    href.includes('logout') || (href.startsWith('http') && !href.includes(window.location.hostname))) {
+                    return;
+                }
+                // Handle dashboard routes only
+                if (href.match(/^(\/?(admin|lecturer|student)_|\/(admin|lecturer|student)\/)/) || 
+                    ['admin_dashboard', 'lecturer_dashboard', 'student_dashboard'].some(route => href.includes(route))) {
+                    e.preventDefault();
+                    // Close mobile sidebar
+                    const offcanvas = document.getElementById('sidebarOffcanvas');
+                    if (offcanvas && typeof bootstrap !== 'undefined') {
+                        const instance = bootstrap.Offcanvas.getInstance(offcanvas);
+                        if (instance) instance.hide();
+                    }
+                    navigateTo(href);
+                }
+            });
+
+            // Browser history support (back/forward buttons)
+            window.addEventListener('popstate', function(e) {
+                if (e.state && e.state.url) {
+                    navigateTo(e.state.url);
+                } else if (window.location.pathname) {
+                    navigateTo(window.location.pathname);
+                }
+            });
+
+            // Initial setup
+            updateActiveSidebar();
+            reinitializeComponents();
+            console.log('%cSPA Navigation Initialized - Fixed sidebar/topbar, dynamic content updates', 'color:#10b981;font-weight:bold');
+        }
+
+        // Bootstrap the SPA (compatible with existing jQuery)
+        if (typeof $ !== 'undefined') {
+            $(initializeSPA);
+        } else {
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initializeSPA);
+            } else {
+                initializeSPA();
+            }
+        }
+    </script>
 {% block script %}
 {% endblock %}
 </body>
-
 </html>
+{% endif %}

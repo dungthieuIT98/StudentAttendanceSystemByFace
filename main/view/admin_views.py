@@ -2,6 +2,7 @@ import math
 import os
 import pickle
 from datetime import datetime
+
 import openpyxl
 
 import cv2
@@ -31,7 +32,19 @@ from main.models import StaffInfo, StudentInfo, StaffRole, Role, Classroom, Stud
 from main.src.anti_spoof_predict import AntiSpoofPredict
 from main.models import BlogPost
 from django.views import View
-from django.shortcuts import render, redirect
+from django.views.decorators.http import require_POST
+
+
+def _parse_form_date(date_str):
+    """dd/mm/yyyy first (VN UI); fallback mm/dd/yyyy or yyyy-mm-dd from pickers/browsers."""
+    s = (date_str or '').strip()
+    for fmt in ('%d/%m/%Y', '%m/%d/%Y', '%Y-%m-%d'):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    raise ValueError(f'Invalid date string: {date_str!r}')
+
 
 color = (255, 0, 0)
 thickness = 2
@@ -101,7 +114,8 @@ class EditBlogView(View):
 @admin_required
 def admin_dashboard_view(request):
     blog_posts = BlogPost.objects.all()
-
+    # SPA Support: base_admin_dashboard.html checks request.META.HTTP_X_REQUESTED_WITH
+    # and renders only content block for AJAX, or full layout for normal requests
     return render(request, 'admin/admin_home.html', {'blog_posts': blog_posts})
 
 
@@ -120,7 +134,7 @@ def admin_profile_view(request):
         admin.email = request.POST['email']
         admin.phone = request.POST['phone']
         admin.address = request.POST['address']
-        admin.birthday = datetime.strptime(request.POST['birthday'], '%d/%m/%Y').date()
+        admin.birthday = _parse_form_date(request.POST['birthday'])
         admin.save()
         messages.success(request, 'Thay đổi thông tin thành công.')
 
@@ -174,7 +188,7 @@ def admin_student_add(request):
         email = request.POST['email']
         phone = request.POST['phone']
         address = request.POST['address']
-        birthday = datetime.strptime(request.POST['birthday'], '%d/%m/%Y').date()
+        birthday = _parse_form_date(request.POST['birthday'])
 
         PathImageFolder = request.POST['PathImageFolder']
         password = make_password(request.POST['id_student'])
@@ -200,7 +214,7 @@ def admin_student_edit(request, id_student):
         student.email = request.POST['email_edit']
         student.phone = request.POST['phone_edit']
         student.address = request.POST['address_edit']
-        student.birthday = datetime.strptime(request.POST['birthday_edit'], '%d/%m/%Y').date()
+        student.birthday = _parse_form_date(request.POST['birthday_edit'])
         student.PathImageFolder = request.POST['PathImageFolder_edit']
         print(request.POST['student_name_edit'])
         student.save()
@@ -218,7 +232,7 @@ def admin_student_capture(request, id_student):
         student.email = request.POST['email_capture']
         student.phone = request.POST['phone_capture']
         student.address = request.POST['address_capture']
-        student.birthday = datetime.strptime(request.POST['birthday_capture'], '%d/%m/%Y').date()
+        student.birthday = _parse_form_date(request.POST['birthday_capture'])
         student.PathImageFolder = request.POST['PathImageFolder_capture']
         student.save()
         messages.success(request, 'Thay đổi thông tin thành công.')
@@ -227,6 +241,7 @@ def admin_student_capture(request, id_student):
 
 
 @admin_required
+@require_POST
 def admin_student_delete(request, id_student):
     StudentInfo.objects.filter(id_student=id_student).delete()
 
@@ -284,7 +299,7 @@ def admin_lecturer_add(request):
         email = request.POST['email']
         phone = request.POST['phone']
         address = request.POST['address']
-        birthday = datetime.strptime(request.POST['birthday'], '%d/%m/%Y').date()
+        birthday = _parse_form_date(request.POST['birthday'])
         password = make_password(request.POST['id_lecturer'])
         lecturer = StaffInfo(id_staff=id_lecturer,
                              staff_name=staff_name,
@@ -294,15 +309,15 @@ def admin_lecturer_add(request):
                              password=password
                              )
         lecturer.save()
-        lecturer_role, created = Role.objects.get_or_create(name='Lecturer')
-        lecturer_role = StaffRole(staff=lecturer, role=lecturer_role)
-        messages.success(request, 'Thêm sinh viên thành công.')
-        lecturer_role.save()
+        role_obj, _ = Role.objects.get_or_create(name='Lecturer')
+        StaffRole.objects.create(staff=lecturer, role=role_obj)
+        messages.success(request, 'Thêm giảng viên thành công.')
         return redirect('admin_lecturer_management')
-    return render(request, 'admin/admin_add_lecturer.html')
+    return redirect('admin_lecturer_management')
 
 
 @admin_required
+@require_POST
 def admin_lecturer_delete(request, id_staff):
     StaffInfo.objects.filter(id_staff=id_staff).delete()
     return redirect('admin_lecturer_management')
@@ -317,7 +332,7 @@ def admin_lecturer_edit(request, id_staff):
         lecturer.email = request.POST['email']
         lecturer.phone = request.POST['phone']
         lecturer.address = request.POST['address']
-        lecturer.birthday = datetime.strptime(request.POST['birthday'], '%d/%m/%Y').date()
+        lecturer.birthday = _parse_form_date(request.POST['birthday'])
         lecturer.save()
         messages.success(request, 'Thay đổi thông tin thành công.')
         return redirect('admin_lecturer_management')
@@ -359,8 +374,8 @@ def admin_schedule_management_view(request):
 def admin_schedule_add(request):
     if request.method == 'POST':
         name = request.POST['name']
-        begin_date = datetime.strptime(request.POST['begin_date'], '%m/%d/%Y').date()
-        end_date = datetime.strptime(request.POST['end_date'], '%m/%d/%Y').date()
+        begin_date = _parse_form_date(request.POST['begin_date'])
+        end_date = _parse_form_date(request.POST['end_date'])
         day_of_week_begin = request.POST['day_of_week_begin']
         begin_time = request.POST['begin_time']
         end_time = request.POST['end_time']
@@ -383,8 +398,8 @@ def admin_schedule_edit(request, id_classroom):
     context = {'schedule': schedule}
     if request.method == 'POST':
         schedule.name = request.POST['name']
-        schedule.begin_date = datetime.strptime(request.POST['begin_date'], '%m/%d/%Y').date()
-        schedule.end_date = datetime.strptime(request.POST['end_date'], '%m/%d/%Y').date()
+        schedule.begin_date = _parse_form_date(request.POST['begin_date'])
+        schedule.end_date = _parse_form_date(request.POST['end_date'])
         schedule.day_of_week_begin = request.POST['day_of_week_begin']
         schedule.begin_time = request.POST['begin_time']
         schedule.end_time = request.POST['end_time']

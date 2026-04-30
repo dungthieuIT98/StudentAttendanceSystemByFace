@@ -33,6 +33,8 @@ for model_name in os.listdir(model_dir):
 @lecturer_required
 def lecturer_dashboard_view(request):
     blog_posts = BlogPost.objects.filter(type__in=["ALL", "GV"])
+    # SPA Support: base_lecturer_dashboard.html checks request.META.HTTP_X_REQUESTED_WITH
+    # and renders only content block for AJAX, or full layout for normal requests
     return render(request, 'lecturer/lecturer_home.html', {'blog_posts': blog_posts})
 
 

@@ -10,57 +10,57 @@
                       action="{% url 'admin_lecturer_add' %}">
                     {% csrf_token %}
                     <div class="mb-3 form-group row d-flex justify-content-center">
-                        <label for="id_lecturer" class="col-sm-3 control-label col-form-label">Mã giảng viên</label>
+                        <label for="id_lecturer_add" class="col-sm-3 control-label col-form-label">Mã giảng viên</label>
                         <div class="col-sm-9">
                             <div class="input-group">
-                                <input type="text" class="form-control" name="id_lecturer" id="id_lecturer" required>
+                                <input type="text" class="form-control" name="id_lecturer" id="id_lecturer_add" required>
                             </div>
                         </div>
                     </div>
 
                     <div class="mb-3 form-group row d-flex justify-content-center">
-                        <label for="lecture_name" class="col-sm-3 control-label col-form-label">
+                        <label for="lecturer_name_add" class="col-sm-3 control-label col-form-label">
                             Họ tên giảng viên
                         </label>
                         <div class="col-sm-9">
                             <div class="input-group">
-                                <input type="text" class="form-control" name="lecturer_name" id="lecture_name" required>
+                                <input type="text" class="form-control" name="lecturer_name" id="lecturer_name_add" required>
                             </div>
                         </div>
                     </div>
 
                     <div class="mb-3 form-group row d-flex justify-content-center">
-                        <label for="email" class="col-sm-3 control-label col-form-label">Email</label>
+                        <label for="email_add_lecturer" class="col-sm-3 control-label col-form-label">Email</label>
                         <div class="col-sm-9">
                             <div class="input-group">
-                                <input type="text" class="form-control" name="email" id="email" required>
+                                <input type="text" class="form-control" name="email" id="email_add_lecturer" required>
                             </div>
                         </div>
                     </div>
 
                     <div class="mb-3 form-group row d-flex justify-content-center">
-                        <label for="phone" class="col-sm-3 control-label col-form-label">Số điện thoại</label>
+                        <label for="phone_add_lecturer" class="col-sm-3 control-label col-form-label">Số điện thoại</label>
                         <div class="col-sm-9">
                             <div class="input-group">
-                                <input type="text" class="form-control" name="phone" id="phone" required>
+                                <input type="text" class="form-control" name="phone" id="phone_add_lecturer" required>
                             </div>
                         </div>
                     </div>
 
                     <div class="mb-3 form-group row d-flex justify-content-center">
-                        <label for="address" class="col-sm-3 control-label col-form-label">Địa chỉ</label>
+                        <label for="address_add_lecturer" class="col-sm-3 control-label col-form-label">Địa chỉ</label>
                         <div class="col-sm-9">
                             <div class="input-group">
-                                <input type="text" class="form-control" name="address" id="address" required>
+                                <input type="text" class="form-control" name="address" id="address_add_lecturer" required>
                             </div>
                         </div>
                     </div>
 
                     <div class="mb-3 form-group row d-flex justify-content-center">
-                        <label for="birthday" class="col-sm-3 control-label col-form-label">Ngày sinh</label>
+                        <label for="birthday_add_lecturer" class="col-sm-3 control-label col-form-label">Ngày sinh</label>
                         <div class="col-sm-9">
                             <div class="input-group">
-                                <input type="text" class="form-control" id="birthday" name="birthday"
+                                <input type="text" class="form-control" id="birthday_add_lecturer" name="birthday"
                                        placeholder="dd/mm/yyyy"/>
                                 <div class="input-group-append">
                                     <span class="input-group-text h-100"><i class="mdi mdi-calendar"></i></span>

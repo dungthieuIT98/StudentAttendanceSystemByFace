@@ -79,6 +79,24 @@ Server chạy tại: **http://127.0.0.1:8000/**
 
 > Dùng `--noreload` vì dự án dùng TensorFlow/PyTorch — auto-reload có thể gây lỗi khi load model.
 
+#### Dừng server
+
+- Trong cửa sổ PowerShell đang chạy `runserver`: nhấn **Ctrl+C** (hoặc **Ctrl+Break** nếu Django ghi chú như vậy).
+- Hoặc tìm PID đang lắng nghe port **8000** rồi kết thúc tiến trình (hữu ích khi không còn cửa sổ đó hoặc server chạy nền):
+
+```powershell
+netstat -ano | findstr :8000
+taskkill /PID <PID_LẮNG_NGHE_8000> /F
+```
+
+(`LISTENING` trong cột cuối là PID cần dùng với `taskkill`.)
+
+#### Chạy lại server
+
+1. Mở PowerShell tại thư mục gốc dự án (hoặc `cd` vào đó).
+2. Nếu đây là phiên mới, set lại biến môi trường như **Bước 2** (cùng giá trị như khi chạy lần đầu).
+3. Chạy lại lệnh **Bước 4** (khối `$python` + `runserver --noreload` ở trên).
+
 ---
 
 ## Truy cập ứng dụng

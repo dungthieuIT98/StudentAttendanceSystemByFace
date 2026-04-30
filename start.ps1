@@ -17,4 +17,4 @@ Write-Host "Dang kiem tra DB Docker..." -ForegroundColor Cyan
 docker compose up -d db | Out-Null
 
 Write-Host "Khoi dong Django tai http://127.0.0.1:8000/" -ForegroundColor Green
-& $python manage.py runserver --noreload
+& $python manage.py runserver

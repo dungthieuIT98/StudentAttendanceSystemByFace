@@ -6,127 +6,163 @@
 {% endblock %}
 
 {% block content %}
-    <div class="card">
-        <div class="card-body">
-            <h3 class="card-title mb-3">Danh sách giảng viên</h3>
-            <div class="d-flex justify-content-between mb-3">
-                <a href="{% url 'admin_lecturer_add' %}" class="btn btn-success mdi mdi-account-plus text-white"
-                   id="addLecturer">Thêm giảng viên
-                </a>
-                <div class="input-group-addon">
-                    <input type="text" class="form-control" placeholder="Tìm kiếm...">
+<div class="container-fluid py-4">
+    <!-- Page Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+                <div>
+                    <h1 class="h3 fw-bold mb-1">Quản lý Giảng viên</h1>
+                    <p class="text-muted mb-0">Danh sách toàn bộ giảng viên trong hệ thống</p>
+                </div>
+                <button type="button" class="btn btn-primary rounded-pill px-4 fw-semibold shadow-sm" id="addLecturer">
+                    <i class="mdi mdi-account-plus"></i>
+                    <span>Thêm giảng viên</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Card -->
+    <div class="row g-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm rounded-3">
+                <div class="card-body p-4">
+                    <!-- Search Bar -->
+                    <div class="mb-4">
+                        <div class="row g-3 align-items-center">
+                            <div class="col-md-6">
+                                <div class="input-group">
+                                    <span class="input-group-text bg-light border-end-0">
+                                        <i class="mdi mdi-magnify text-muted"></i>
+                                    </span>
+                                    <input type="text" class="form-control border-start-0 ps-0" placeholder="Tìm kiếm theo tên, email hoặc mã giảng viên...">
+                                </div>
+                            </div>
+                            <div class="col-md-6 text-md-end">
+                                <span class="text-muted small">
+                                    <i class="mdi mdi-account-group"></i>
+                                    Tổng số: <strong class="text-dark">{{ list_lecturers.paginator.count }}</strong> giảng viên
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Table -->
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th class="text-center fw-semibold" scope="col">Mã GV</th>
+                                    <th class="fw-semibold" scope="col">Họ và tên</th>
+                                    <th class="fw-semibold" scope="col">Email</th>
+                                    <th class="text-center fw-semibold" scope="col">Số điện thoại</th>
+                                    <th class="fw-semibold" scope="col">Địa chỉ</th>
+                                    <th class="text-center fw-semibold" scope="col">Ngày sinh</th>
+                                    <th class="text-center fw-semibold" scope="col">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            {% for lecturer in list_lecturers %}
+                                <tr>
+                                    <td class="text-center">
+                                        <span class="badge bg-primary bg-opacity-10 text-primary fw-semibold">{{ lecturer.id_staff }}</span>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <div class="bg-primary bg-opacity-10 rounded-circle d-flex align-items-center justify-content-center" style="width: 32px; height: 32px; min-width: 32px;">
+                                                <i class="mdi mdi-account text-primary"></i>
+                                            </div>
+                                            <span class="fw-medium">{{ lecturer.staff_name }}</span>
+                                        </div>
+                                    </td>
+                                    <td class="text-muted">{{ lecturer.email }}</td>
+                                    <td class="text-center">{{ lecturer.phone }}</td>
+                                    <td class="text-muted">{{ lecturer.address|truncatewords:5 }}</td>
+                                    <td class="text-center">{{ lecturer.birthday|date:"d/m/Y" }}</td>
+                                    <td class="text-center">
+                                        <div class="d-flex gap-2 justify-content-center">
+                                            <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" onclick="editLecturer('{{ lecturer.id_staff|escapejs }}')">
+                                                <i class="mdi mdi-pencil"></i>
+                                                <span>Sửa</span>
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-danger rounded-pill px-3" onclick="confirmDeleteLecturer('{{ lecturer.id_staff|escapejs }}')">
+                                                <i class="mdi mdi-delete"></i>
+                                                <span>Xóa</span>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% empty %}
+                                <tr>
+                                    <td colspan="7" class="text-center py-5">
+                                        <div class="mb-3">
+                                            <i class="mdi mdi-account-off text-muted" style="font-size: 3rem;"></i>
+                                        </div>
+                                        <h6 class="fw-semibold mb-2">Không có giảng viên</h6>
+                                        <p class="text-muted mb-0">Chưa có giảng viên nào trong cơ sở dữ liệu</p>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pagination -->
+                    {% if list_lecturers.paginator.num_pages > 1 %}
+                    <div class="d-flex justify-content-between align-items-center mt-4 pt-3 border-top">
+                        <div class="text-muted small">
+                            Trang {{ list_lecturers.number }} / {{ list_lecturers.paginator.num_pages }}
+                        </div>
+                        <nav aria-label="Pagination">
+                            <ul class="pagination pagination-sm mb-0">
+                                {% if list_lecturers.has_previous %}
+                                    <li class="page-item">
+                                        <a class="page-link rounded-pill me-1" href="?page=1">
+                                            <i class="mdi mdi-chevron-double-left"></i>
+                                        </a>
+                                    </li>
+                                    <li class="page-item">
+                                        <a class="page-link rounded-pill me-1" href="?page={{ list_lecturers.previous_page_number }}">
+                                            <i class="mdi mdi-chevron-left"></i>
+                                        </a>
+                                    </li>
+                                {% endif %}
+
+                                {% for i in list_lecturers.paginator.page_range %}
+                                    {% if list_lecturers.number == i %}
+                                        <li class="page-item active">
+                                            <a class="page-link rounded-pill mx-1" href="?page={{ i }}">{{ i }}</a>
+                                        </li>
+                                    {% elif i > list_lecturers.number|add:'-3' and i < list_lecturers.number|add:'3' %}
+                                        <li class="page-item">
+                                            <a class="page-link rounded-pill mx-1" href="?page={{ i }}">{{ i }}</a>
+                                        </li>
+                                    {% endif %}
+                                {% endfor %}
+
+                                {% if list_lecturers.has_next %}
+                                    <li class="page-item">
+                                        <a class="page-link rounded-pill ms-1" href="?page={{ list_lecturers.next_page_number }}">
+                                            <i class="mdi mdi-chevron-right"></i>
+                                        </a>
+                                    </li>
+                                    <li class="page-item">
+                                        <a class="page-link rounded-pill ms-1" href="?page={{ list_lecturers.paginator.num_pages }}">
+                                            <i class="mdi mdi-chevron-double-right"></i>
+                                        </a>
+                                    </li>
+                                {% endif %}
+                            </ul>
+                        </nav>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
-        <div class="table-responsive">
-            <table class="table">
-                <thead>
-                <tr>
-                    <th class="text-center" scope="col">Mã giảng viên</th>
-                    <th scope="col">Họ và tên</th>
-                    <th scope="col">Email</th>
-                    <th class="text-center" scope="col">Số điện thoại</th>
-                    <th scope="col">Địa chỉ</th>
-                    <th class="text-center" scope="col">Ngày sinh</th>
-                    <th class="text-center" scope="col">Thao tác</th>
-                </tr>
-                </thead>
-                <tbody>
-                {% for lecturer in list_lecturers %}
-                    <tr>
-                        <td class="text-center">{{ lecturer.id_staff }}</td>
-                        <td>{{ lecturer.staff_name }}</td>
-                        <td>{{ lecturer.email }}</td>
-                        <td class="text-center">{{ lecturer.phone }}</td>
-                        <td>{{ lecturer.address }}</td>
-                        <td class="text-center">{{ lecturer.birthday|date:"d/m/Y" }}</td>
-                        <td class="text-center">
-                            <a href="#" id="deleteLecturer" class="btn btn-danger btn-sm mdi mdi-delete"
-                               onclick="confirmDeleteLecturer({{ lecturer.id_staff }})">Xóa</a>
-                            <a href="#" id="editLecturer" class="btn btn-primary btn-sm mdi mdi-account-edit"
-                               onclick="editLecturer({{ lecturer.id_staff }})">Sửa</a>
-                        </td>
-                    </tr>
-                    {% include 'admin/modal-popup/popup_edit_lecturer.html' %}
-                {% empty %}
-                    <tr class="text-center text-danger">
-                        <td colspan="10"><strong>Không tồn tại giảng viên nào trong cơ sở dữ liệu!</strong></td>
-                    </tr>
-                {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        <div class="pagination justify-content-center">
-            <ul class="pagination">
-                {% if list_lecturers.has_previous %}
-                    <li class="page-item">
-                        <a class="page-link" href="?page=1">‹‹</a>
-                    </li>
-                    <li class="page-item">
-                        <a class="page-link" href="?page={{ list_lecturers.previous_page_number }}">‹</a>
-                    </li>
-                {% endif %}
-
-                {% for i in list_lecturers.paginator.page_range %}
-                    {% if list_lecturers.number == i %}
-                        <li class="page-item active">
-                            <a class="page-link" href="?page={{ i }}">{{ i }}</a>
-                        </li>
-                    {% elif i > list_lecturers.number|add:'-3' and i < list_lecturers.number|add:'3' %}
-                        <li class="page-item">
-                            <a class="page-link" href="?page={{ i }}">{{ i }}</a>
-                        </li>
-                    {% endif %}
-                {% endfor %}
-
-                {% if list_lecturers.has_next %}
-                    <li class="page-item">
-                        <a class="page-link" href="?page={{ list_lecturers.next_page_number }}">›</a>
-                    </li>
-                    <li class="page-item">
-                        <a class="page-link" href="?page={{ list_lecturers.paginator.num_pages }}">››</a>
-                    </li>
-                {% endif %}
-            </ul>
-        </div>
-        <div class="text-center">
-            <p>Trang {{ list_lecturers.number }} / {{ list_lecturers.paginator.num_pages }}</p>
-        </div>
     </div>
-    {% include 'admin/modal-popup/popup_add_lecturer.html' %}
-    {% include 'admin/modal-popup/popup_delete_lecturer.html' %}
-{% endblock %}
-
-{% block js %}
-    <script src="{% static '' %}assets/js/manage-lecturer.js"></script>
-    <script>
-        function confirmDeleteLecturer(lecturerId) {
-            let deleteUrl = "{% url 'admin_lecturer_delete' '1' %}".replace('1', lecturerId);
-            $('#confirmDeleteButton').attr('href', deleteUrl);
-            $('#confirmDeleteModal').modal('show');
-            $('#lecturerIdToDelete').text(lecturerId);
-        }
-
-        function editLecturer(lecturerId) {
-            let id_lecturer = lecturerId
-            let editForm = $('#editLecturerForm');
-            editForm.attr('action', "{% url 'admin_lecturer_edit' '0' %}".replace('0', id_lecturer));
-            $.ajax({
-                    type: "GET",
-                    url: "{% url 'admin_lecturer_get_info' '1' %}".replace('1', id_lecturer),
-                    dataType: "json",
-                    success: function (data) {
-                        console.log(data);
-                        $('#id_lecturer').val(data.lecturer.id_staff);
-                        $('#lecture_name').val(data.lecturer.staff_name);
-                        $('#email').val(data.lecturer.email);
-                        $('#phone').val(data.lecturer.phone);
-                        $('#address').val(data.lecturer.address);
-                        $('#birthday').val(data.lecturer.birthday);
-                        $('#editLecturerModal').modal('show');
-                    },
-                }
-            )
-        }
-    </script>
+</div>
+{% include 'admin/modal-popup/popup_edit_lecturer.html' %}
+{% include 'admin/modal-popup/popup_add_lecturer.html' %}
+{% include 'admin/modal-popup/popup_delete_lecturer.html' %}
 {% endblock %}
