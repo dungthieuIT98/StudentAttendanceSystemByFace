@@ -36,11 +36,12 @@
             <p class="text-muted mb-0">Điểm danh tự động bằng AI • Khuôn mặt được nhận diện realtime</p>
         </div>
         <div class="d-flex align-items-center gap-2">
-            <button onclick="toggleCamera()" class="btn btn-outline-primary rounded-pill px-4 fw-semibold d-flex align-items-center gap-2">
+            <button id="camera-toggle-btn" type="button" class="btn btn-outline-primary rounded-pill px-4 fw-semibold d-flex align-items-center gap-2">
                 <i class="mdi mdi-camera"></i>
                 <span id="camera-status">Đang livestream</span>
             </button>
-            <form method="post" action="{% url 'lecturer_mark_attendance_by_face' classroom.id_classroom %}" style="display: inline;">
+            <form method="post" action="{% url 'lecturer_mark_attendance_by_face' classroom.id_classroom %}" style="display: inline;"
+                  onsubmit="(function(){ var v=document.getElementById('video-feed'); if(v){ try{v.removeAttribute('src'); v.src='';}catch(_){}; } })();">
                 {% csrf_token %}
                 <button type="submit" class="btn btn-success rounded-pill px-4 fw-semibold shadow-sm d-flex align-items-center gap-2">
                     <i class="mdi mdi-check-all"></i>
@@ -56,7 +57,7 @@
             <div class="camera-wrapper">
                 <div class="camera-container">
                     <img id="video-feed" class="camera-feed" 
-                         src="/lecturer/live-video-feed2/{{ classroom.id_classroom }}"
+                         src="{% url 'live_video_feed2' classroom.id_classroom %}"
                          alt="Live Video Feed - Real-time Face Recognition"
                          style="max-height: 620px; width: 100%; object-fit: cover;">
                     
@@ -93,58 +94,49 @@
                 <div class="d-flex align-items-center justify-content-between mb-4">
                     <h5 class="mb-0 d-flex align-items-center gap-2">
                         <span class="text-success">●</span>
-                        Sinh viên đã nhận diện (12)
+                        Có mặt / đã điểm danh (<span id="recognized-count">{{ attendance_list|length }}</span>)
                     </h5>
                     <span class="badge bg-primary">Live</span>
                 </div>
                 
                 <div id="recognized-list" class="recognized-list overflow-auto" style="max-height: 420px;">
-                    <!-- Populated with example data; can be extended with real-time updates via JS without changing backend -->
-                    <div class="recognized-list-item d-flex align-items-center gap-3 p-3 mb-2 rounded-3 bg-light item">
-                        <div class="flex-shrink-0">
-                            <div class="bg-success text-white rounded-circle fw-bold d-flex align-items-center justify-content-center" style="width: 42px; height: 42px; font-size: 13px;">98</div>
+                    {% for a in attendance_list %}
+                        <div class="recognized-list-item d-flex align-items-center gap-3 p-3 mb-2 rounded-3 bg-light item">
+                            <div class="flex-shrink-0">
+                                <div class="bg-success text-white rounded-circle fw-bold d-flex align-items-center justify-content-center"
+                                     style="width: 42px; height: 42px; font-size: 18px;"
+                                     title="MSSV: {{ a.id_student.id_student }}">
+                                    <i class="mdi mdi-check"></i>
+                                </div>
+                            </div>
+                            <div class="flex-grow-1 min-width-0">
+                                <div class="fw-semibold text-truncate">{{ a.id_student.id_student }} • {{ a.id_student.student_name }}</div>
+                                <div class="small text-muted">{{ a.check_in_time|date:"H:i:s" }}</div>
+                            </div>
+                            {% if a.attendance_status == 2 %}
+                                <span class="badge bg-success">Đúng giờ</span>
+                            {% elif a.attendance_status == 3 %}
+                                <span class="badge bg-warning text-dark">Trễ</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Khác</span>
+                            {% endif %}
                         </div>
-                        <div class="flex-grow-1 min-width-0">
-                            <div class="fw-semibold text-truncate">Nguyễn Thị Bình</div>
-                            <div class="small text-muted">MSSV: 21520012 • 14:28:45</div>
+                    {% empty %}
+                        <div class="text-muted small">
+                            Chưa có sinh viên nào được ghi nhận điểm danh hôm nay.
                         </div>
-                        <span class="badge bg-success">Đúng giờ</span>
-                    </div>
-                    <div class="recognized-list-item d-flex align-items-center gap-3 p-3 mb-2 rounded-3 bg-light item">
-                        <div class="flex-shrink-0">
-                            <div class="bg-success text-white rounded-circle fw-bold d-flex align-items-center justify-content-center" style="width: 42px; height: 42px; font-size: 13px;">94</div>
-                        </div>
-                        <div class="flex-grow-1 min-width-0">
-                            <div class="fw-semibold text-truncate">Trần Minh Cường</div>
-                            <div class="small text-muted">MSSV: 21520045 • 14:29:12</div>
-                        </div>
-                        <span class="badge bg-warning text-dark">Trễ</span>
-                    </div>
-                    <div class="recognized-list-item d-flex align-items-center gap-3 p-3 mb-2 rounded-3 bg-light item">
-                        <div class="flex-shrink-0">
-                            <div class="bg-success text-white rounded-circle fw-bold d-flex align-items-center justify-content-center" style="width: 42px; height: 42px; font-size: 13px;">96</div>
-                        </div>
-                        <div class="flex-grow-1 min-width-0">
-                            <div class="fw-semibold text-truncate">Lê Thị D</div>
-                            <div class="small text-muted">MSSV: 21520067 • 14:30:05</div>
-                        </div>
-                        <span class="badge bg-success">Đúng giờ</span>
-                    </div>
+                    {% endfor %}
                 </div>
                 
                 <div class="mt-4 pt-4 border-top">
                     <div class="row text-center small">
                         <div class="col">
-                            <div class="fw-bold text-success">28</div>
-                            <div class="text-muted">Đúng giờ</div>
+                            <div class="fw-bold text-success">{{ attendance_list|length }}</div>
+                            <div class="text-muted">Đã ghi nhận</div>
                         </div>
                         <div class="col">
-                            <div class="fw-bold text-warning">3</div>
-                            <div class="text-muted">Trễ</div>
-                        </div>
-                        <div class="col">
-                            <div class="fw-bold text-danger">2</div>
-                            <div class="text-muted">Vắng</div>
+                            <div class="fw-bold text-muted">{{ students_in_class|length }}</div>
+                            <div class="text-muted">Tổng SV lớp</div>
                         </div>
                     </div>
                 </div>
@@ -162,57 +154,140 @@
 </div>
 
     <script>
-        // Lightweight client-side enhancements for UI/UX (no backend, URLs, or template variables changed)
+        // Lightweight client-side enhancements for UI/UX
         let isLive = true;
-        
+
+        let _recognizedStreamFrameSeq = 0;
+        let _lastRefreshOnStreamMs = 0;
+        /** Sau khi stream camera trả khung hình thành công: gọi lại API danh sách điểm danh */
+        const REFRESH_AFTER_STREAM_MS = 500;  // Giảm xuống 500ms để nhanh hơn
+
+        function _statusBadge(status) {
+            if (status === 2) return '<span class="badge bg-success">Đúng giờ</span>';
+            if (status === 3) return '<span class="badge bg-warning text-dark">Trễ</span>';
+            return '<span class="badge bg-secondary">Khác</span>';
+        }
+
+        function _renderRecognizedList(items) {
+            const listEl = document.getElementById('recognized-list');
+            if (!listEl) return;
+
+            if (!items || items.length === 0) {
+                listEl.innerHTML = '<div class="text-muted small">Chưa có sinh viên nào được ghi nhận điểm danh hôm nay.</div>';
+                return;
+            }
+
+            listEl.innerHTML = items.map((a) => `
+                <div class="recognized-list-item d-flex align-items-center gap-3 p-3 mb-2 rounded-3 bg-light item">
+                    <div class="flex-shrink-0">
+                        <div class="bg-success text-white rounded-circle fw-bold d-flex align-items-center justify-content-center"
+                             style="width: 42px; height: 42px; font-size: 18px;"
+                             title="MSSV: ${a.student_id}">
+                            <i class="mdi mdi-check"></i>
+                        </div>
+                    </div>
+                    <div class="flex-grow-1 min-width-0">
+                        <div class="fw-semibold text-truncate">${a.student_id} • ${a.student_name}</div>
+                        <div class="small text-muted">${a.check_in_time}</div>
+                    </div>
+                    ${_statusBadge(a.attendance_status)}
+                </div>
+            `).join('');
+        }
+
+        async function refreshRecognized() {
+            try {
+                const res = await fetch("{% url 'lecturer_live_attendance_today' classroom.id_classroom %}", {
+                    headers: { "X-Requested-With": "XMLHttpRequest" }
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+
+                const countEl = document.getElementById('recognized-count');
+                if (countEl) countEl.textContent = String(data.count ?? 0);
+
+                _renderRecognizedList(data.items || []);
+            } catch (_) {
+                // ignore transient network errors
+            }
+        }
+
+        function refreshRecognizedAfterStreamFrame() {
+            const now = Date.now();
+            _recognizedStreamFrameSeq += 1;
+            // Lần đầu camera/stream OK: gọi API ngay
+            if (_recognizedStreamFrameSeq === 1) {
+                refreshRecognized();
+                _lastRefreshOnStreamMs = now;
+                return;
+            }
+            // MJPEG có thể kích hoạt `load` liên tục — throttle
+            if (now - _lastRefreshOnStreamMs < REFRESH_AFTER_STREAM_MS) return;
+            _lastRefreshOnStreamMs = now;
+            refreshRecognized();
+        }
+
+        const videoImg = document.getElementById('video-feed');
+        if (videoImg) {
+            videoImg.addEventListener('error', () => {
+                _recognizedStreamFrameSeq = 0;
+                const statusEl = document.getElementById('camera-status');
+                if (statusEl) statusEl.textContent = 'Không thể mở camera (kiểm tra quyền/thiết bị)';
+                videoImg.style.filter = 'grayscale(1)';
+                videoImg.style.opacity = '0.6';
+            });
+            videoImg.addEventListener('load', () => {
+                const statusEl = document.getElementById('camera-status');
+                if (statusEl && statusEl.textContent.includes('Không thể mở camera')) {
+                    statusEl.textContent = 'Đang livestream';
+                }
+                videoImg.style.filter = '';
+                videoImg.style.opacity = '';
+                refreshRecognizedAfterStreamFrame();
+            });
+        }
+
         function toggleCamera() {
             isLive = !isLive;
             const statusEl = document.getElementById('camera-status');
             const box1 = document.getElementById('face-box-1');
             const info = document.getElementById('recognition-info');
-            
+
             if (!isLive) {
                 statusEl.textContent = 'Camera tạm dừng';
                 statusEl.parentElement.classList.add('btn-secondary');
                 statusEl.parentElement.classList.remove('btn-outline-primary');
                 if (box1) box1.style.display = 'block';
                 if (info) info.style.display = 'flex';
+                if (videoImg) videoImg.style.display = 'none';
             } else {
+                _recognizedStreamFrameSeq = 0;
                 statusEl.textContent = 'Đang livestream';
                 statusEl.parentElement.classList.remove('btn-secondary');
                 statusEl.parentElement.classList.add('btn-outline-primary');
                 if (box1) box1.style.display = 'none';
                 if (info) info.style.display = 'none';
+                if (videoImg) videoImg.style.display = '';
             }
         }
-        
-        // Simulate live face detection on page load
-        window.addEventListener('load', () => {
-            setTimeout(() => {
-                const box1 = document.getElementById('face-box-1');
-                const info = document.getElementById('recognition-info');
-                if (box1) box1.style.display = 'block';
-                if (info) info.style.display = 'flex';
-                
-                // Simulate updating recognized names
-                const names = ['Nguyễn Văn A', 'Trần Thị B', 'Lê Văn C', 'Phạm Thị D'];
-                let i = 0;
-                setInterval(() => {
-                    const nameEl = document.getElementById('recognized-name');
-                    if (nameEl) {
-                        nameEl.textContent = names[i % names.length];
-                        i++;
-                    }
-                }, 3500);
-            }, 1200);
+
+        // Ensure the handler exists even when page is loaded via AJAX partials
+        window.toggleCamera = toggleCamera;
+
+        const toggleBtn = document.getElementById('camera-toggle-btn');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => toggleCamera());
+        }
+
+        // Poll server for newly recognized students (chạy ngay, không đợi window.load)
+        refreshRecognized();
+        const _pollIntervalId = setInterval(refreshRecognized, 500);
+
+        // Cleanup khi SPA navigate away
+        window.addEventListener('beforeunload', () => {
+            if (_pollIntervalId) clearInterval(_pollIntervalId);
         });
-        
-        // Keyboard support for demo
-        document.addEventListener('keydown', (e) => {
-            if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
-                e.preventDefault();
-                toggleCamera();
-            }
-        });
+
+        // NOTE: Removed "/" keyboard shortcut to avoid accidental camera pause while scanning.
     </script>
 {% endblock %}

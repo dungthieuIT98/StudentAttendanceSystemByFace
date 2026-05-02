@@ -126,14 +126,33 @@ def student_checkpoint_view(request):
 
     student_classes = Classroom.objects.filter(
         students__id_student=id_student,
-    ).order_by('day_of_week_begin', 'begin_time')
+    ).order_by('name', 'begin_time', 'day_of_week_begin')
 
     current_date = date.today()
     classroom_per_page = 5
     page_number = request.GET.get('page')
 
-    attendance_scores = []
+    grouped_scores = {}
     for classroom in student_classes:
+        key = classroom.group_key or str(classroom.id_classroom)
+        
+        if key not in grouped_scores:
+            grouped_scores[key] = {
+                'classrooms': [],
+                'days': [],
+                'name': classroom.name,
+                'begin_date': classroom.begin_date,
+                'end_date': classroom.end_date,
+                'begin_time': classroom.begin_time,
+                'end_time': classroom.end_time,
+                'absent_count': 0,
+                'present_count': 0,
+                'late_count': 0,
+            }
+        
+        grouped_scores[key]['classrooms'].append(classroom)
+        grouped_scores[key]['days'].append(classroom.day_of_week_begin)
+        
         absent_count = Attendance.objects.filter(
             attendance_status=1,
             id_student=id_student,
@@ -151,23 +170,36 @@ def student_checkpoint_view(request):
             id_student=id_student,
             id_classroom=classroom.id_classroom,
         ).count()
+        
+        grouped_scores[key]['absent_count'] += absent_count
+        grouped_scores[key]['present_count'] += present_count
+        grouped_scores[key]['late_count'] += late_count
 
-        total_number_attendance = absent_count + late_count + present_count
-        total_attendance_present = late_count + present_count
-        total_attendance_percentage = round((((absent_count * 0) + (late_count * 0.5) + present_count) / 9) * 3, 2)
+    attendance_scores = []
+    for key, data in grouped_scores.items():
+        total_number_attendance = data['absent_count'] + data['late_count'] + data['present_count']
+        total_attendance_present = data['late_count'] + data['present_count']
+        total_attendance_percentage = round((((data['absent_count'] * 0) + (data['late_count'] * 0.5) + data['present_count']) / 9) * 3, 2) if total_number_attendance > 0 else 0
 
         attendance_scores.append({
-            'classroom': classroom,
-            'absent_count': absent_count,
-            'present_count': present_count,
-            'late_count': late_count,
+            'name': data['name'],
+            'days': sorted(data['days']),
+            'begin_date': data['begin_date'],
+            'end_date': data['end_date'],
+            'begin_time': data['begin_time'],
+            'end_time': data['end_time'],
+            'absent_count': data['absent_count'],
+            'present_count': data['present_count'],
+            'late_count': data['late_count'],
             'total_number_attendance': total_number_attendance,
             'total_attendance_present': total_attendance_present,
             'total_attendance_percentage': total_attendance_percentage,
         })
 
-        paginator = Paginator(attendance_scores, classroom_per_page)
-        page = paginator.get_page(page_number)
+    attendance_scores.sort(key=lambda x: (x['name'], x['begin_time']))
+
+    paginator = Paginator(attendance_scores, classroom_per_page)
+    page = paginator.get_page(page_number)
 
     context = {
         'attendance_scores': page,

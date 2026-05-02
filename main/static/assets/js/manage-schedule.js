@@ -12,24 +12,24 @@
 
   $(document).on("click", ".js-delete-schedule", function (e) {
     e.preventDefault();
-    const classroomId = this.getAttribute("data-id");
-    if (!classroomId || !window.AdminCrudUrls) return;
+    const groupKey = this.getAttribute("data-id");
+    if (!groupKey || !window.AdminCrudUrls) return;
     const a = document.getElementById("confirmDeleteButton");
-    if (a) a.setAttribute("href", window.AdminCrudUrls.scheduleDelete(classroomId));
+    if (a) a.setAttribute("href", window.AdminCrudUrls.scheduleGroupDelete(groupKey));
     const span = document.getElementById("classroomIdToDelete");
-    if (span) span.textContent = classroomId;
+    if (span) span.textContent = groupKey;
     showModal("confirmDeleteModal");
   });
 
   $(document).on("click", ".js-edit-schedule", function (e) {
     e.preventDefault();
-    const classroomId = this.getAttribute("data-id");
-    if (!classroomId || !window.AdminCrudUrls) return;
+    const groupKey = this.getAttribute("data-id");
+    if (!groupKey || !window.AdminCrudUrls) return;
 
     const form = document.getElementById("editScheduleForm");
-    if (form) form.setAttribute("action", window.AdminCrudUrls.scheduleEdit(classroomId));
+    if (form) form.setAttribute("action", window.AdminCrudUrls.scheduleGroupEdit(groupKey));
 
-    fetch(window.AdminCrudUrls.scheduleGetInfo(classroomId), {
+    fetch(window.AdminCrudUrls.scheduleGroupGetInfo(groupKey), {
       headers: { "X-Requested-With": "XMLHttpRequest" },
     })
       .then((r) => r.json())
@@ -48,7 +48,15 @@
         if (nameField) nameField.value = s.name ?? "";
         if (beginDateField) beginDateField.value = s.begin_date ?? "";
         if (endDateField) endDateField.value = s.end_date ?? "";
-        if (dayField) dayField.value = String(s.day_of_week_begin ?? "");
+        if (dayField) {
+          const values = (s.day_of_week_begin_list || []).map((x) => String(x));
+          Array.from(dayField.options).forEach((opt) => {
+            opt.selected = values.includes(opt.value);
+          });
+          if (typeof $ !== "undefined" && $(dayField).data("select2")) {
+            $(dayField).trigger("change");
+          }
+        }
 
         const bt = (s.begin_time || "").toString().slice(0, 5);
         const et = (s.end_time || "").toString().slice(0, 5);

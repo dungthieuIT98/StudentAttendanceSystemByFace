@@ -1,6 +1,8 @@
 import logging
 import pickle
 from datetime import datetime, timedelta
+from collections import defaultdict
+import threading
 import os
 import cv2
 import imutils
@@ -35,6 +37,49 @@ image_cropper = CropImage()
 model_dir = "main/resources/anti_spoof_models"
 
 # ---------------------------------------------------------------------------
+# In-memory cache: "just recognized" students (before DB commit completes)
+# Key: (classroom_id, student_id), Value: {timestamp, status, student_name}
+# TTL: 10 seconds (sau đó sẽ có từ DB)
+# ---------------------------------------------------------------------------
+_PENDING_ATTENDANCE_CACHE = {}
+_CACHE_LOCK = threading.Lock()
+
+
+def add_pending_attendance(classroom_id, student_id, student_name, status):
+    """Thêm vào cache ngay khi nhận diện xong, trước khi ghi DB."""
+    with _CACHE_LOCK:
+        key = (classroom_id, student_id)
+        _PENDING_ATTENDANCE_CACHE[key] = {
+            "timestamp": datetime.now(),
+            "student_id": student_id,
+            "student_name": student_name,
+            "attendance_status": status,
+        }
+    logger.debug("[CACHE] Added pending attendance | classroom_id=%s | student_id=%s", classroom_id, student_id)
+
+
+def get_pending_attendance_for_classroom(classroom_id):
+    """Lấy danh sách pending từ cache (chưa expire)."""
+    now = datetime.now()
+    TTL_SECONDS = 10
+    with _CACHE_LOCK:
+        result = []
+        expired_keys = []
+        for key, val in _PENDING_ATTENDANCE_CACHE.items():
+            cid, sid = key
+            if cid != classroom_id:
+                continue
+            age = (now - val["timestamp"]).total_seconds()
+            if age > TTL_SECONDS:
+                expired_keys.append(key)
+                continue
+            result.append(val)
+        # Dọn dẹp expired
+        for k in expired_keys:
+            del _PENDING_ATTENDANCE_CACHE[k]
+    return result
+
+# ---------------------------------------------------------------------------
 # Mapping: pkl class_names (folder names used during training)
 #          → actual id_student values stored in PostgreSQL.
 #
@@ -61,6 +106,52 @@ DUPLICATE_WINDOW_MINUTES = 5
 
 
 # ---------------------------------------------------------------------------
+# Camera open helper (Windows-friendly)
+# ---------------------------------------------------------------------------
+def _open_camera():
+    """
+    Try to open an attached webcam robustly across Windows/OpenCV backends.
+    Returns an opened cv2.VideoCapture or None.
+    """
+    # Allow overriding camera index from env without touching code.
+    # Example: set CAMERA_INDEX=1 if the default camera isn't at 0.
+    env_idx = os.getenv("CAMERA_INDEX")
+    preferred_indices = []
+    if env_idx is not None:
+        try:
+            preferred_indices.append(int(env_idx))
+        except ValueError:
+            logger.warning("[STREAM] Invalid CAMERA_INDEX=%s (must be int)", env_idx)
+    preferred_indices += [0, 1, 2]
+
+    # Prefer Windows backends that tend to work better with webcams.
+    preferred_backends = []
+    if hasattr(cv2, "CAP_DSHOW"):
+        preferred_backends.append(cv2.CAP_DSHOW)
+    if hasattr(cv2, "CAP_MSMF"):
+        preferred_backends.append(cv2.CAP_MSMF)
+    preferred_backends.append(None)  # OpenCV default fallback
+
+    for idx in preferred_indices:
+        for backend in preferred_backends:
+            try:
+                cap = cv2.VideoCapture(idx) if backend is None else cv2.VideoCapture(idx, backend)
+                if cap is not None and cap.isOpened():
+                    # Reduce latency; some drivers ignore these but harmless.
+                    try:
+                        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                    except Exception:
+                        pass
+                    logger.info("[STREAM] Camera opened | index=%s | backend=%s", idx, backend)
+                    return cap
+            except Exception as exc:
+                logger.debug("[STREAM] VideoCapture failed | index=%s | backend=%s | error=%s", idx, backend, exc)
+
+    logger.error("[STREAM] Cannot open any camera | tried_indices=%s", preferred_indices)
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Progress bar helper
 # ---------------------------------------------------------------------------
 def draw_progress_bar(frame, progress, x, y, w, h):
@@ -71,6 +162,19 @@ def draw_progress_bar(frame, progress, x, y, w, h):
     cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_width, bar_y + bar_height), (0, 0, 0), -1)
     filled_width = int(bar_width * progress)
     cv2.rectangle(frame, (bar_x, bar_y), (bar_x + filled_width, bar_y + bar_height), (0, 255, 0), -1)
+
+
+def draw_save_overlay(frame, student_name):
+    """Vẽ overlay 'Đã lưu' góc trên trái khi vừa ghi attendance."""
+    cv2.putText(
+        frame,
+        f"Da luu: {student_name}",
+        (20, 50),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        1.2,
+        (0, 255, 0),
+        3,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -211,8 +315,8 @@ def main(id_subject):
 
     logger.info("[STREAM] FaceNet model loaded")
 
-    cap = cv2.VideoCapture(0)
-    if not cap.isOpened():
+    cap = _open_camera()
+    if cap is None:
         logger.error("[STREAM] Cannot open camera | classroom_id=%s", id_subject)
         return
 
@@ -225,13 +329,36 @@ def main(id_subject):
     # In-memory set of student IDs already saved this session
     recognized_names = []
 
-    sess = tf.compat.v1.Session(graph=graph)
+    # Overlay "Đã lưu" sau khi ghi attendance thành công
+    last_saved_student_name = ""
+    save_display_frames_left = 0
 
-    while cap.isOpened():
+    sess = tf.compat.v1.Session(graph=graph)
+    consecutive_read_failures = 0
+    MAX_CONSECUTIVE_READ_FAILURES = 30
+
+    while cap is not None and cap.isOpened():
         isSuccess, frame = cap.read()
         if not isSuccess:
-            logger.warning("[STREAM] Failed to read frame | classroom_id=%s", id_subject)
+            consecutive_read_failures += 1
+            if consecutive_read_failures % 10 == 0:
+                logger.warning(
+                    "[STREAM] Failed to read frame | classroom_id=%s | consecutive=%d",
+                    id_subject, consecutive_read_failures
+                )
+
+            # If camera becomes busy/disconnected, try reopening.
+            if consecutive_read_failures >= MAX_CONSECUTIVE_READ_FAILURES:
+                logger.error("[STREAM] Reopening camera after read failures | classroom_id=%s", id_subject)
+                try:
+                    cap.release()
+                except Exception:
+                    pass
+                cap = _open_camera()
+                consecutive_read_failures = 0
             continue
+
+        consecutive_read_failures = 0
 
         image_bbox = model_test.get_bbox(frame)
 
@@ -241,6 +368,11 @@ def main(id_subject):
         if image_bbox is None:
             logger.debug("[STREAM] No face detected | classroom_id=%s | timestamp=%s",
                          id_subject, datetime.now().strftime("%H:%M:%S"))
+            # Vẫn hiển thị overlay "Đã lưu" nếu còn frames
+            if save_display_frames_left > 0:
+                draw_save_overlay(frame, last_saved_student_name)
+                save_display_frames_left -= 1
+
             ret, buffer = cv2.imencode(".jpg", frame)
             yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n")
             continue
@@ -287,6 +419,11 @@ def main(id_subject):
                           color, 2)
             cv2.putText(frame, result_text, (image_bbox[0], image_bbox[1]),
                         cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, color, thickness=1, lineType=2)
+
+            if save_display_frames_left > 0:
+                draw_save_overlay(frame, last_saved_student_name)
+                save_display_frames_left -= 1
+
             ret, buffer = cv2.imencode(".jpg", frame)
             yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n")
             continue
@@ -340,6 +477,11 @@ def main(id_subject):
             cv2.rectangle(frame, (x, y), (w, h), (0, 255, 0), 2)
             cv2.putText(frame, "UNKNOWN", (x, h + 20), cv2.FONT_HERSHEY_COMPLEX_SMALL,
                         1, (255, 255, 255), thickness=1, lineType=2)
+
+            if save_display_frames_left > 0:
+                draw_save_overlay(frame, last_saved_student_name)
+                save_display_frames_left -= 1
+
             ret, buffer = cv2.imencode(".jpg", frame)
             yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n")
             continue
@@ -353,6 +495,11 @@ def main(id_subject):
             cv2.rectangle(frame, (x, y), (w, h), (0, 0, 255), 2)
             cv2.putText(frame, message, (x, y - 10), cv2.FONT_HERSHEY_COMPLEX_SMALL,
                         1, (0, 0, 255), thickness=1, lineType=2)
+
+            if save_display_frames_left > 0:
+                draw_save_overlay(frame, last_saved_student_name)
+                save_display_frames_left -= 1
+
             ret, buffer = cv2.imencode(".jpg", frame)
             yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n")
             continue
@@ -391,8 +538,42 @@ def main(id_subject):
                 "[ATTENDANCE] Triggering save | classroom_id=%s | student_id=%s | confidence=%.4f | timestamp=%s",
                 id_subject, best_name, confidence, datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             )
+
+            # Xác định status (đúng giờ / trễ) để thêm vào cache
+            try:
+                classroom_obj = Classroom.objects.get(pk=id_subject)
+                begin_time = classroom_obj.begin_time
+                now_ts = datetime.now()
+                time_difference = (
+                    datetime.combine(now_ts.date(), now_ts.time()) - datetime.combine(now_ts.date(), begin_time)
+                )
+                attendance_status = 3 if time_difference.total_seconds() > 900 else 2
+            except Exception:
+                attendance_status = 2  # Fallback
+
+            # Lấy tên sinh viên từ DB để cache có đầy đủ info
+            try:
+                student_obj = StudentInfo.objects.get(pk=best_name)
+                student_name = student_obj.student_name
+            except Exception:
+                student_name = best_name  # Fallback
+
+            # ĐƯA VÀO CACHE NGAY (trước khi ghi DB) → UI thấy ngay lập tức
+            add_pending_attendance(id_subject, best_name, student_name, attendance_status)
+            logger.info("[ATTENDANCE] Added to pending cache | student_id=%s | status=%d", best_name, attendance_status)
+
+            # Sau đó mới ghi DB (có thể chậm hơn do transaction)
             result = insert_attendance(id_subject, best_name)
             logger.info("[ATTENDANCE] insert_attendance returned: %s", result)
+
+            # Hiển thị overlay "Đã lưu" trong 40 frames tiếp theo (~1-2s tùy FPS)
+            last_saved_student_name = best_name
+            save_display_frames_left = 40
+
+        # Overlay "Đã lưu" nếu vừa save xong
+        if save_display_frames_left > 0:
+            draw_save_overlay(frame, last_saved_student_name)
+            save_display_frames_left -= 1
 
         ret, buffer = cv2.imencode(".jpg", frame)
         yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n")

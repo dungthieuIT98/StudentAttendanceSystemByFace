@@ -8,11 +8,21 @@
 {% block content %}
     <div class="card">
         <div class="card-body">
-            <h3 class="card-title mb-0">Danh sách lớp học</h3>
-            <form method="get" action="{% url 'admin_list_classroom_student' %}">
-                <input type="text" name="q" value="{{ search_query }}" placeholder="Nhập mã hoặc tên lớp">
-                <button type="submit" class="btn btn-info btn-sm"><i class="fa fa-search"></i></button>
-            </form>
+            <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
+                <div>
+                    <h3 class="card-title mb-1">Danh sách lớp học</h3>
+                    <div class="text-muted small">Tìm theo mã hoặc tên lớp học</div>
+                </div>
+
+                <form method="get" action="{% url 'admin_list_classroom_student' %}" class="d-flex gap-2">
+                    <input type="text" class="form-control" name="q" value="{{ search_query }}"
+                           placeholder="Nhập mã hoặc tên lớp">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fa fa-search"></i>
+                        <span class="d-none d-sm-inline">Tìm</span>
+                    </button>
+                </form>
+            </div>
         </div>
         <div class="table-responsive">
             <table class="table">
@@ -33,33 +43,30 @@
                 {% for classroom in list_classrooms %}
                     <tr>
                         <td class="text-center">
-                            {% if classroom.day_of_week_begin == 7 %}
-                                Chủ Nhật
-                            {% elif classroom.day_of_week_begin == 1 %}
-                                Thứ Hai
-                            {% elif classroom.day_of_week_begin == 2 %}
-                                Thứ Ba
-                            {% elif classroom.day_of_week_begin == 3 %}
-                                Thứ Tư
-                            {% elif classroom.day_of_week_begin == 4 %}
-                                Thứ Năm
-                            {% elif classroom.day_of_week_begin == 5 %}
-                                Thứ Sáu
-                            {% elif classroom.day_of_week_begin == 6 %}
-                                Thứ Bảy
-                            {% endif %}
+                            {{ classroom.days_label }}
                         </td>
                         <td>{{ classroom.name }}</td>
 
-                        <td class="text-center">{{ classroom.id_lecturer.staff_name }}</td>
+                        <td class="text-center">
+                            {% if classroom.id_lecturer %}
+                                {{ classroom.id_lecturer.staff_name }}
+                            {% else %}
+                                <span class="text-muted">Chưa gán</span>
+                            {% endif %}
+                        </td>
                         <td class="text-center">{{ classroom.begin_date|date:"d/m/Y" }}</td>
                         <td class="text-center">{{ classroom.end_date|date:"d/m/Y" }}</td>
                         <td class="text-center">{{ classroom.begin_time|time:"H:i" }}</td>
                         <td class="text-center">{{ classroom.end_time|time:"H:i" }}</td>
-                        <td class="text-center">{{ classroom.student_count }}</td>
+                        <td class="text-center">
+                            <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2 rounded-pill">
+                                {{ classroom.student_count }}
+                            </span>
+                        </td>
                         <td class="text-center">
                             <a href="{% url 'admin_list_student_in_classroom' classroom.id_classroom %}"
-                               class="btn btn-info btn-sm mdi mdi-account-edit">
+                               class="btn btn-outline-primary btn-sm">
+                                <i class="mdi mdi-format-list-bulleted"></i>
                                 <span>Xem danh sách</span>
                             </a>
                         </td>

@@ -7,10 +7,13 @@ from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.paginator import Paginator
 from django.http import Http404
+from django.http import JsonResponse
 from django.http import StreamingHttpResponse
 from django.shortcuts import redirect
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
+from django.utils import timezone
 from django.views.decorators import gzip
+from django.views.decorators.http import require_GET
 
 from main.decorators import lecturer_required
 from main.models import StaffInfo, StudentClassDetails
@@ -145,38 +148,72 @@ def lecturer_attendance_class_view(request):
     return render(request, 'lecturer/lecturer_attendance_class.html', context)
 
 
+def _classroom_ids_same_schedule_group(classroom):
+    """Các buổi (row DB) trong cùng TKBG chia sẻ roster sinh viên theo group_key."""
+    gk = (getattr(classroom, "group_key", None) or "").strip()
+    if gk:
+        return list(Classroom.objects.filter(group_key=gk).values_list("pk", flat=True))
+    return [classroom.pk]
+
+
+def _lecturer_roster_for_class(classroom):
+    ids = _classroom_ids_same_schedule_group(classroom)
+    qs = (
+        StudentClassDetails.objects.filter(id_classroom_id__in=ids)
+        .select_related("id_student")
+        .order_by("id_student_id")
+    )
+    seen = set()
+    roster = []
+    for row in qs:
+        if row.id_student_id in seen:
+            continue
+        seen.add(row.id_student_id)
+        roster.append(row)
+    return roster
+
+
 @lecturer_required
 def lecturer_mark_attendance(request, classroom_id):
-    classroom = Classroom.objects.get(pk=classroom_id)
-    students_in_class = StudentClassDetails.objects.filter(id_classroom=classroom)
-    day_of_week_today = date.today().isoweekday()
+    classroom = get_object_or_404(Classroom, pk=classroom_id)
+    students_in_class = _lecturer_roster_for_class(classroom)
+
+    today = timezone.localdate()
+    day_of_week_today = today.isoweekday()
 
     if day_of_week_today != classroom.day_of_week_begin:
         return redirect('lecturer_attendance')
 
-    attendance_list = Attendance.objects.filter(
-        id_classroom=classroom,
-        check_in_time__date=datetime.now()
-    )
+    attendance_list = Attendance.objects.filter(id_classroom=classroom, check_in_time__date=today)
+    attendance_by_student = {}
+    for att in attendance_list:
+        attendance_by_student[att.id_student_id] = att
+
+    now = timezone.now()
+    for row in students_in_class:
+        setattr(row, "today_attendance", attendance_by_student.get(row.id_student_id))
 
     if request.method == 'POST':
         for student in students_in_class:
             student_id = student.id_student
             attendance_status = request.POST.get(f'attendance_status_{student_id.id_student}')
 
+            if attendance_status is None:
+                continue
+
             attendance, created = Attendance.objects.get_or_create(
                 id_student=student_id,
                 id_classroom=classroom,
-                check_in_time__date=datetime.now(),
+                check_in_time__date=today,
                 defaults={
                     'attendance_status': attendance_status,
-                    'check_in_time': datetime.now()
-                }
+                    'check_in_time': now,
+                },
             )
 
             if not created and attendance_status != str(attendance.attendance_status):
                 attendance.attendance_status = attendance_status
-                attendance.check_in_time = datetime.now()
+                attendance.check_in_time = now
                 attendance.save()
 
         return redirect('lecturer_mark_attendance', classroom_id=classroom_id)
@@ -184,7 +221,8 @@ def lecturer_mark_attendance(request, classroom_id):
     context = {
         'students_in_class': students_in_class,
         'classroom': classroom,
-        'attendance_list': attendance_list
+        'attendance_list': attendance_list,
+        'today': today,
     }
 
     return render(request, 'lecturer/lecturer_mask_attendance.html', context)
@@ -258,17 +296,27 @@ def live_video_feed2(request, classroom_id):
                                  content_type="multipart/x-mixed-replace; boundary=frame")
 
 
+@lecturer_required
 def lecturer_mark_attendance_by_face(request, classroom_id):
-    classroom = Classroom.objects.get(pk=classroom_id)
-    students_in_class = StudentClassDetails.objects.filter(id_classroom=classroom)
-    day_of_week_today = date.today().isoweekday()
+    classroom = get_object_or_404(Classroom, pk=classroom_id)
+    students_in_class = _lecturer_roster_for_class(classroom)
+    day_of_week_today = timezone.localdate().isoweekday()
 
     if day_of_week_today != classroom.day_of_week_begin:
         return redirect('lecturer_attendance')
 
-    attendance_list = Attendance.objects.filter(
-        id_classroom=classroom,
-        check_in_time__date=datetime.now()
+    # Hoàn tất: chỉ thoát và về danh sách — điểm danh đã được ghi khi nhận diện (stream loop).
+    if request.method == 'POST':
+        messages.success(request, 'Đã hoàn tất điểm danh bằng khuôn mặt.')
+        return redirect('lecturer_attendance')
+
+    today = timezone.localdate()
+    # Chỉ coi "đã điểm danh" = có mặt (2) / trễ (3); vắng (1) không vào sidebar này
+    attendance_list = (
+        Attendance.objects.filter(id_classroom=classroom, check_in_time__date=today)
+        .filter(attendance_status__in=(2, 3))
+        .select_related('id_student')
+        .order_by('-check_in_time')
     )
 
     context = {
@@ -278,6 +326,52 @@ def lecturer_mark_attendance_by_face(request, classroom_id):
     }
 
     return render(request, 'lecturer/lecturer_mask_attendance_by_face.html', context)
+
+
+@lecturer_required
+@require_GET
+def lecturer_live_attendance_today(request, classroom_id):
+    from main.view.reg import get_pending_attendance_for_classroom
+    
+    classroom = Classroom.objects.get(pk=classroom_id)
+    today = timezone.localdate()
+    
+    # Lấy từ DB (đã commit)
+    qs = (
+        Attendance.objects
+        .filter(id_classroom=classroom, check_in_time__date=today)
+        .filter(attendance_status__in=(2, 3))
+        .select_related('id_student')
+        .order_by('-check_in_time')
+    )
+
+    items_dict = {}
+    for a in qs:
+        items_dict[a.id_student.id_student] = {
+            "id_attendance": a.id_attendance,
+            "student_id": a.id_student.id_student,
+            "student_name": a.id_student.student_name,
+            "attendance_status": a.attendance_status,
+            "check_in_time": a.check_in_time.strftime("%H:%M:%S"),
+        }
+
+    # Merge cache (pending, chưa commit DB) → hiển thị trước
+    pending_list = get_pending_attendance_for_classroom(classroom_id)
+    for p in pending_list:
+        sid = p["student_id"]
+        if sid not in items_dict:  # Chưa có từ DB → dùng cache
+            items_dict[sid] = {
+                "id_attendance": 0,
+                "student_id": sid,
+                "student_name": p["student_name"],
+                "attendance_status": p["attendance_status"],
+                "check_in_time": p["timestamp"].strftime("%H:%M:%S"),
+            }
+
+    items = list(items_dict.values())
+    items.sort(key=lambda x: x["check_in_time"], reverse=True)
+
+    return JsonResponse({"count": len(items), "items": items})
 
 
 @lecturer_required

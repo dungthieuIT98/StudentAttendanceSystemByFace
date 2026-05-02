@@ -2,6 +2,7 @@ import math
 import os
 import pickle
 from datetime import datetime
+import uuid
 
 import openpyxl
 
@@ -44,6 +45,22 @@ def _parse_form_date(date_str):
         except ValueError:
             continue
     raise ValueError(f'Invalid date string: {date_str!r}')
+
+
+def _weekday_label(day: int) -> str:
+    mapping = {
+        1: 'Thứ Hai',
+        2: 'Thứ Ba',
+        3: 'Thứ Tư',
+        4: 'Thứ Năm',
+        5: 'Thứ Sáu',
+        6: 'Thứ Bảy',
+        7: 'Chủ Nhật',
+    }
+    try:
+        return mapping.get(int(day), str(day))
+    except (TypeError, ValueError):
+        return str(day)
 
 
 color = (255, 0, 0)
@@ -218,7 +235,7 @@ def admin_student_add(request):
         birthday = _parse_form_date(request.POST['birthday'])
 
         PathImageFolder = request.POST['PathImageFolder']
-        password = make_password(request.POST['id_student'])
+        password = make_password('1')
         student = StudentInfo(id_student=id_student,
                               student_name=student_name,
                               email=email, phone=phone,
@@ -327,7 +344,7 @@ def admin_lecturer_add(request):
         phone = request.POST['phone']
         address = request.POST['address']
         birthday = _parse_form_date(request.POST['birthday'])
-        password = make_password(request.POST['id_lecturer'])
+        password = make_password('1')
         lecturer = StaffInfo(id_staff=id_lecturer,
                              staff_name=staff_name,
                              email=email, phone=phone,
@@ -385,10 +402,36 @@ def admin_lecturer_get_info(request, id_staff):
 
 @admin_required
 def admin_schedule_management_view(request):
-    schedule = Classroom.objects.all()
+    schedule = Classroom.objects.all().order_by('group_key', 'id_classroom')
     lecturers = StaffInfo.objects.filter(roles__name='Lecturer').order_by('id_staff')
     schedule_per_page = 10
-    paginator = Paginator(schedule, schedule_per_page)
+    # Group by group_key for UI: 1 row with multiple weekdays
+    grouped = {}
+    for s in schedule:
+        key = s.group_key or str(s.id_classroom)
+        g = grouped.get(key)
+        if not g:
+            grouped[key] = {
+                'group_key': key,
+                'id_classroom': s.id_classroom,
+                'name': s.name,
+                'begin_date': s.begin_date,
+                'end_date': s.end_date,
+                'begin_time': s.begin_time,
+                'end_time': s.end_time,
+                'id_lecturer': s.id_lecturer,
+                'days': set([s.day_of_week_begin]),
+            }
+        else:
+            g['days'].add(s.day_of_week_begin)
+    grouped_list = list(grouped.values())
+    for g in grouped_list:
+        g['days_sorted'] = sorted(list(g['days']))
+        g['days_label'] = ', '.join([str(d) for d in g['days_sorted']])
+    # sort by name then begin_time
+    grouped_list.sort(key=lambda x: (x['name'], x['begin_time'], x['group_key']))
+
+    paginator = Paginator(grouped_list, schedule_per_page)
     page_number = request.GET.get('page')
     page = paginator.get_page(page_number)
     context = {
@@ -405,18 +448,30 @@ def admin_schedule_add(request):
         name = request.POST['name']
         begin_date = _parse_form_date(request.POST['begin_date'])
         end_date = _parse_form_date(request.POST['end_date'])
-        day_of_week_begin = request.POST['day_of_week_begin']
+        day_of_week_list = request.POST.getlist('day_of_week_begin_list') or []
         begin_time = request.POST['begin_time']
         end_time = request.POST['end_time']
         id_lecturer = request.POST['id_lecturer']
-        schedule = Classroom(name=name,
-                             begin_date=begin_date, end_date=end_date,
-                             day_of_week_begin=day_of_week_begin,
-                             begin_time=begin_time,
-                             end_time=end_time,
-                             id_lecturer_id=id_lecturer)
-        schedule.save()
-        messages.success(request, 'Thêm Thời Khóa Biểu thành công.')
+        if not day_of_week_list:
+            messages.warning(request, 'Vui lòng chọn ít nhất 1 Thứ.')
+            return redirect('admin_schedule_management')
+
+        created = 0
+        group_key = str(uuid.uuid4())
+        with transaction.atomic():
+            for day in day_of_week_list:
+                Classroom.objects.create(
+                    group_key=group_key,
+                    name=name,
+                    begin_date=begin_date,
+                    end_date=end_date,
+                    day_of_week_begin=int(day),
+                    begin_time=begin_time,
+                    end_time=end_time,
+                    id_lecturer_id=id_lecturer
+                )
+                created += 1
+        messages.success(request, f'Thêm {created} Thời Khóa Biểu thành công.')
         return redirect('admin_schedule_management')
     return render(request, 'admin/modal-popup/popup_add_schedule.html')
 
@@ -429,14 +484,148 @@ def admin_schedule_edit(request, id_classroom):
         schedule.name = request.POST['name']
         schedule.begin_date = _parse_form_date(request.POST['begin_date'])
         schedule.end_date = _parse_form_date(request.POST['end_date'])
-        schedule.day_of_week_begin = request.POST['day_of_week_begin']
+        day_of_week_list = request.POST.getlist('day_of_week_begin_list') or []
+        if not day_of_week_list:
+            messages.warning(request, 'Vui lòng chọn ít nhất 1 Thứ.')
+            return redirect('admin_schedule_management')
+
+        # Update current record with first selected day
+        schedule.day_of_week_begin = int(day_of_week_list[0])
         schedule.begin_time = request.POST['begin_time']
         schedule.end_time = request.POST['end_time']
         schedule.id_lecturer_id = request.POST['id_lecturer']
         schedule.save()
+
+        # Keep all records in the same group in sync
+        group_key = schedule.group_key or ''
+        if not group_key:
+            group_key = str(uuid.uuid4())
+            schedule.group_key = group_key
+            schedule.save(update_fields=['group_key'])
+
+        # Update shared fields for the entire group
+        Classroom.objects.filter(group_key=group_key).update(
+            name=schedule.name,
+            begin_date=schedule.begin_date,
+            end_date=schedule.end_date,
+            begin_time=schedule.begin_time,
+            end_time=schedule.end_time,
+            id_lecturer_id=schedule.id_lecturer_id,
+        )
+
+        desired_days = {int(d) for d in day_of_week_list}
+        existing_days = set(Classroom.objects.filter(group_key=group_key).values_list('day_of_week_begin', flat=True))
+
+        # Delete days removed
+        days_to_delete = existing_days - desired_days
+        if days_to_delete:
+            Classroom.objects.filter(group_key=group_key, day_of_week_begin__in=list(days_to_delete)).delete()
+
+        # Add missing days
+        days_to_add = desired_days - existing_days
+        if days_to_add:
+            with transaction.atomic():
+                for day in sorted(days_to_add):
+                    Classroom.objects.create(
+                        group_key=group_key,
+                        name=schedule.name,
+                        begin_date=schedule.begin_date,
+                        end_date=schedule.end_date,
+                        day_of_week_begin=int(day),
+                        begin_time=schedule.begin_time,
+                        end_time=schedule.end_time,
+                        id_lecturer_id=schedule.id_lecturer_id,
+                    )
         messages.success(request, 'Thay đổi thông tin thành công.')
         return redirect('admin_schedule_management')
     return render(request, 'admin/modal-popup/popup_edit_schedule.html', context)
+
+
+@admin_required
+def admin_schedule_group_get_info(request, group_key):
+    qs = Classroom.objects.filter(group_key=group_key).order_by('day_of_week_begin', 'id_classroom')
+    first = qs.first()
+    if not first:
+        return JsonResponse({'error': 'Không tìm thấy thời khóa biểu'}, status=404)
+    days = list(qs.values_list('day_of_week_begin', flat=True))
+    schedule_data = {
+        'group_key': group_key,
+        'id_classroom': first.id_classroom,
+        'name': first.name,
+        'begin_date': first.begin_date.strftime('%d/%m/%Y'),
+        'end_date': first.end_date.strftime('%d/%m/%Y'),
+        'day_of_week_begin_list': days,
+        'begin_time': first.begin_time,
+        'end_time': first.end_time,
+        'id_lecturer': first.id_lecturer_id,
+    }
+    return JsonResponse({'schedule': schedule_data})
+
+
+@admin_required
+@require_POST
+def admin_schedule_group_edit(request, group_key):
+    day_of_week_list = request.POST.getlist('day_of_week_begin_list') or []
+    if not day_of_week_list:
+        messages.warning(request, 'Vui lòng chọn ít nhất 1 Thứ.')
+        return redirect('admin_schedule_management')
+
+    qs = Classroom.objects.filter(group_key=group_key).order_by('id_classroom')
+    first = qs.first()
+    if not first:
+        messages.error(request, 'Không tìm thấy thời khóa biểu.')
+        return redirect('admin_schedule_management')
+
+    name = request.POST['name']
+    begin_date = _parse_form_date(request.POST['begin_date'])
+    end_date = _parse_form_date(request.POST['end_date'])
+    begin_time = request.POST['begin_time']
+    end_time = request.POST['end_time']
+    id_lecturer = request.POST['id_lecturer']
+
+    # Update shared fields for all records in group
+    Classroom.objects.filter(group_key=group_key).update(
+        name=name,
+        begin_date=begin_date,
+        end_date=end_date,
+        begin_time=begin_time,
+        end_time=end_time,
+        id_lecturer_id=id_lecturer,
+    )
+
+    desired_days = {int(d) for d in day_of_week_list}
+    existing_days = set(Classroom.objects.filter(group_key=group_key).values_list('day_of_week_begin', flat=True))
+
+    # Delete removed days
+    days_to_delete = existing_days - desired_days
+    if days_to_delete:
+        Classroom.objects.filter(group_key=group_key, day_of_week_begin__in=list(days_to_delete)).delete()
+
+    # Add missing days
+    days_to_add = desired_days - existing_days
+    if days_to_add:
+        with transaction.atomic():
+            for day in sorted(days_to_add):
+                Classroom.objects.create(
+                    group_key=group_key,
+                    name=name,
+                    begin_date=begin_date,
+                    end_date=end_date,
+                    day_of_week_begin=int(day),
+                    begin_time=begin_time,
+                    end_time=end_time,
+                    id_lecturer_id=id_lecturer,
+                )
+
+    messages.success(request, 'Thay đổi thông tin thành công.')
+    return redirect('admin_schedule_management')
+
+
+@admin_required
+@require_POST
+def admin_schedule_group_delete(request, group_key):
+    Classroom.objects.filter(group_key=group_key).delete()
+    return redirect('admin_schedule_management')
 
 
 @admin_required
@@ -472,10 +661,42 @@ def admin_list_classroom_student_view(request):
     classroom_per_page = 10
     page_number = request.GET.get('page')
     search_query = request.GET.get('q', '')
-    list_classrooms = Classroom.objects.filter(
+    qs = Classroom.objects.filter(
         Q(id_classroom__icontains=search_query) | Q(name__icontains=search_query)
-    ).annotate(student_count=Count('studentclassdetails__id_student'))
-    paginator = Paginator(list_classrooms, classroom_per_page)
+    ).order_by('group_key', 'id_classroom')
+
+    grouped = {}
+    for c in qs:
+        key = c.group_key or str(c.id_classroom)
+        g = grouped.get(key)
+        if not g:
+            grouped[key] = {
+                'group_key': key,
+                'id_classroom': c.id_classroom,
+                'name': c.name,
+                'begin_date': c.begin_date,
+                'end_date': c.end_date,
+                'begin_time': c.begin_time,
+                'end_time': c.end_time,
+                'id_lecturer': c.id_lecturer,
+                'days': set([c.day_of_week_begin]),
+                'classroom_ids': [c.id_classroom],
+            }
+        else:
+            g['days'].add(c.day_of_week_begin)
+            g['classroom_ids'].append(c.id_classroom)
+
+    grouped_list = list(grouped.values())
+    for g in grouped_list:
+        g['days_sorted'] = sorted(list(g['days']))
+        g['days_label'] = ', '.join([_weekday_label(d) for d in g['days_sorted']])
+        g['student_count'] = StudentClassDetails.objects.filter(
+            id_classroom_id__in=g['classroom_ids']
+        ).values('id_student_id').distinct().count()
+    
+    grouped_list.sort(key=lambda x: (x['name'], x['begin_time'], x['group_key']))
+
+    paginator = Paginator(grouped_list, classroom_per_page)
     page = paginator.get_page(page_number)
     context = {'list_classrooms': page, 'search_query': search_query}
     return render(request, 'admin/admin_list_classroom_student_management.html', context)
@@ -484,10 +705,23 @@ def admin_list_classroom_student_view(request):
 @admin_required
 def admin_list_student_in_classroom_view(request, classroom_id):
     classroom = Classroom.objects.get(pk=classroom_id)
-    students_in_class = StudentClassDetails.objects.filter(id_classroom=classroom)
-    available_students = StudentInfo.objects.exclude(
-        studentclassdetails__id_classroom=classroom
-    ).order_by('id_student')
+    group_key = classroom.group_key or ''
+    
+    if group_key:
+        classroom_ids = list(Classroom.objects.filter(group_key=group_key).values_list('id_classroom', flat=True))
+        students_in_class = StudentClassDetails.objects.filter(
+            id_classroom_id__in=classroom_ids
+        ).select_related('id_student').distinct('id_student_id').order_by('id_student_id')
+        
+        available_students = StudentInfo.objects.exclude(
+            studentclassdetails__id_classroom_id__in=classroom_ids
+        ).order_by('id_student')
+    else:
+        students_in_class = StudentClassDetails.objects.filter(id_classroom=classroom)
+        available_students = StudentInfo.objects.exclude(
+            studentclassdetails__id_classroom=classroom
+        ).order_by('id_student')
+    
     student_per_page = 10
     page_number = request.GET.get('page')
     paginator = Paginator(students_in_class, student_per_page)
@@ -495,6 +729,7 @@ def admin_list_student_in_classroom_view(request, classroom_id):
     context = {
         'students_in_class': page,
         'classroom_id': classroom_id,
+        'classroom': classroom,
         'available_students': available_students,
     }
     return render(request, 'admin/admin_list_student_classroom_management.html', context)
@@ -509,10 +744,18 @@ def admin_list_student_in_class_add_list(request, classroom_id):
         except Classroom.DoesNotExist:
             return render(request, 'error/error_template.html', {'error_message': 'Lớp học không tồn tại.'})
 
+        group_key = classroom.group_key or ''
+        
+        if group_key:
+            classroom_ids = list(Classroom.objects.filter(group_key=group_key).values_list('id_classroom', flat=True))
+        else:
+            classroom_ids = [classroom_id]
+
         workbook = openpyxl.load_workbook(file_path)
         sheet = workbook.active
         list_id_student = [row[0].value for row in sheet.iter_rows(min_row=2, max_col=1)]
 
+        added = 0
         with transaction.atomic():
             for id_student in list_id_student:
                 try:
@@ -521,9 +764,23 @@ def admin_list_student_in_class_add_list(request, classroom_id):
                     student = StudentInfo(id_student=id_student)
                     student.save()
 
-                if not StudentClassDetails.objects.filter(id_classroom=classroom, id_student=student).exists():
-                    student_class_detail = StudentClassDetails(id_classroom=classroom, id_student=student)
-                    student_class_detail.save()
+                already_exists = StudentClassDetails.objects.filter(
+                    id_classroom_id__in=classroom_ids,
+                    id_student_id=student.id_student
+                ).exists()
+                
+                if not already_exists:
+                    for cid in classroom_ids:
+                        StudentClassDetails.objects.create(
+                            id_classroom_id=cid,
+                            id_student_id=student.id_student
+                        )
+                    added += 1
+        
+        if len(classroom_ids) > 1:
+            messages.success(request, f'Thêm {added} sinh viên vào {len(classroom_ids)} lớp học (cùng môn) thành công.')
+        else:
+            messages.success(request, f'Thêm {added} sinh viên vào lớp học thành công.')
         return redirect('admin_list_student_in_classroom', classroom_id)
     return render(request, 'admin/admin_list_student_classroom_management.html')
 
@@ -536,24 +793,39 @@ def admin_list_student_in_class_add(request, classroom_id):
             messages.warning(request, 'Vui lòng chọn ít nhất 1 sinh viên.')
             return redirect('admin_list_student_in_classroom', classroom_id)
 
+        classroom = Classroom.objects.get(id_classroom=classroom_id)
+        group_key = classroom.group_key or ''
+        
+        if group_key:
+            classroom_ids = list(Classroom.objects.filter(group_key=group_key).values_list('id_classroom', flat=True))
+        else:
+            classroom_ids = [classroom_id]
+
         added = 0
         existed = 0
         with transaction.atomic():
             for id_student in id_students:
-                if StudentClassDetails.objects.filter(
-                    id_classroom_id=classroom_id,
+                already_exists = StudentClassDetails.objects.filter(
+                    id_classroom_id__in=classroom_ids,
                     id_student_id=id_student
-                ).exists():
+                ).exists()
+                
+                if already_exists:
                     existed += 1
                     continue
-                StudentClassDetails.objects.create(
-                    id_classroom_id=classroom_id,
-                    id_student_id=id_student
-                )
+                
+                for cid in classroom_ids:
+                    StudentClassDetails.objects.create(
+                        id_classroom_id=cid,
+                        id_student_id=id_student
+                    )
                 added += 1
 
         if added:
-            messages.success(request, f'Thêm {added} sinh viên vào lớp học thành công.')
+            if len(classroom_ids) > 1:
+                messages.success(request, f'Thêm {added} sinh viên vào {len(classroom_ids)} lớp học (cùng môn) thành công.')
+            else:
+                messages.success(request, f'Thêm {added} sinh viên vào lớp học thành công.')
         if existed:
             messages.warning(request, f'{existed} sinh viên đã tồn tại trong lớp học.')
         return redirect('admin_list_student_in_classroom', classroom_id)
@@ -561,14 +833,45 @@ def admin_list_student_in_class_add(request, classroom_id):
 
 
 @admin_required
-def admin_list_student_in_class_delete(request, id_student, id_classroom):
-    StudentClassDetails.objects.filter(id_student_id=id_student, id_classroom_id=id_classroom).delete()
+def admin_list_student_in_class_delete(request, id_classroom, id_student):
+    classroom = Classroom.objects.get(id_classroom=id_classroom)
+    group_key = classroom.group_key or ''
+    
+    if group_key:
+        classroom_ids = list(Classroom.objects.filter(group_key=group_key).values_list('id_classroom', flat=True))
+    else:
+        classroom_ids = [id_classroom]
+    
+    deleted_count = StudentClassDetails.objects.filter(
+        id_student_id=id_student, 
+        id_classroom_id__in=classroom_ids
+    ).delete()[0]
+    
+    if deleted_count > 1:
+        messages.success(request, f'Đã xóa sinh viên khỏi {deleted_count} lớp học (cùng môn).')
+    elif deleted_count == 1:
+        messages.success(request, 'Đã xóa sinh viên khỏi lớp học.')
+    
     return redirect('admin_list_student_in_classroom', id_classroom)
 
 
 @admin_required
 def admin_list_student_in_class_delete_all(request, id_classroom):
-    StudentClassDetails.objects.filter(id_classroom_id=id_classroom).delete()
+    classroom = Classroom.objects.get(id_classroom=id_classroom)
+    group_key = classroom.group_key or ''
+    
+    if group_key:
+        classroom_ids = list(Classroom.objects.filter(group_key=group_key).values_list('id_classroom', flat=True))
+    else:
+        classroom_ids = [id_classroom]
+    
+    deleted_count = StudentClassDetails.objects.filter(id_classroom_id__in=classroom_ids).delete()[0]
+    
+    if len(classroom_ids) > 1:
+        messages.success(request, f'Đã xóa tất cả sinh viên khỏi {len(classroom_ids)} lớp học (cùng môn).')
+    else:
+        messages.success(request, 'Đã xóa tất cả sinh viên khỏi lớp học.')
+    
     return redirect('admin_list_student_in_classroom', id_classroom)
 
 

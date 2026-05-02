@@ -15,7 +15,8 @@
                         </label>
                         <div class="col-sm-9">
                             <div class="input-group">
-                                <select class="form-select" name="id_students" id="id_students" multiple required size="8">
+                                <select class="form-select" name="id_students" id="id_students"
+                                        multiple required data-enhanced="select2">
                                     {% for student in available_students %}
                                         <option value="{{ student.id_student }}">
                                             {{ student.student_name }} - {{ student.id_student }}
@@ -24,7 +25,7 @@
                                 </select>
                             </div>
                             <div class="form-text text-muted small mt-1">
-                                Giữ Ctrl (hoặc Cmd) để chọn nhiều sinh viên.
+                                Bạn có thể chọn nhiều sinh viên trong dropdown.
                             </div>
                         </div>
                     </div>

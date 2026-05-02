@@ -1,3 +1,5 @@
+from datetime import time
+
 from django.db import models
 
 from django.db import models
@@ -49,6 +51,8 @@ class StudentInfo(models.Model):
 
 class Classroom(models.Model):
     id_classroom = models.BigAutoField(primary_key=True)
+    # Group multiple weekdays into one logical schedule record (UI shows 1 row)
+    group_key = models.CharField(max_length=36, db_index=True, blank=True, default='')
     name = models.TextField()
     begin_date = models.DateField()
     end_date = models.DateField()
@@ -62,6 +66,16 @@ class Classroom(models.Model):
         blank=True,
     )
     students = models.ManyToManyField(StudentInfo, through='StudentClassDetails')
+
+    @property
+    def begin_period_code(self):
+        """SA / CH theo giờ bắt đầu (trước 12:00 = SA)."""
+        return 'SA' if self.begin_time < time(12, 0) else 'CH'
+
+    @property
+    def end_period_code(self):
+        """SA / CH theo giờ kết thúc."""
+        return 'SA' if self.end_time < time(12, 0) else 'CH'
 
 
 class StudentClassDetails(models.Model):

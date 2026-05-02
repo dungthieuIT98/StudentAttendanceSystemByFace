@@ -24,25 +24,28 @@
             {% for score in attendance_scores %}
                 <tr>
                     <td class="text-center">
-                        {% if score.classroom.day_of_week_begin == 7 %}
-                            Chủ Nhật
-                        {% elif score.classroom.day_of_week_begin == 1 %}
-                            Thứ Hai
-                        {% elif score.classroom.day_of_week_begin == 2 %}
-                            Thứ Ba
-                        {% elif score.classroom.day_of_week_begin == 3 %}
-                            Thứ Tư
-                        {% elif score.classroom.day_of_week_begin == 4 %}
-                            Thứ Năm
-                        {% elif score.classroom.day_of_week_begin == 5 %}
-                            Thứ Sáu
-                        {% elif score.classroom.day_of_week_begin == 6 %}
-                            Thứ Bảy
-                        {% endif %}
+                        {% for day in score.days %}
+                            {% if day == 7 %}
+                                Chủ Nhật
+                            {% elif day == 1 %}
+                                Thứ Hai
+                            {% elif day == 2 %}
+                                Thứ Ba
+                            {% elif day == 3 %}
+                                Thứ Tư
+                            {% elif day == 4 %}
+                                Thứ Năm
+                            {% elif day == 5 %}
+                                Thứ Sáu
+                            {% elif day == 6 %}
+                                Thứ Bảy
+                            {% endif %}
+                            {% if not forloop.last %}, {% endif %}
+                        {% endfor %}
                     </td>
-                    <td>{{ score.classroom.name }}</td>
-                    <td class="text-center">{{ score.classroom.begin_date|date:"d/m/Y" }}</td>
-                    <td class="text-center">{{ score.classroom.end_date|date:"d/m/Y" }}</td>
+                    <td>{{ score.name }}</td>
+                    <td class="text-center">{{ score.begin_date|date:"d/m/Y" }}</td>
+                    <td class="text-center">{{ score.end_date|date:"d/m/Y" }}</td>
                     <td class="text-center">
                         {{ score.total_attendance_present }}
                         / {{ score.late_count }}
@@ -63,7 +66,7 @@
                 </tr>
             {% empty %}
                 <tr class="text-center text-danger">
-                    <td colspan="5"><strong>Lớp học hiện tại đang được cập nhật!</strong></td>
+                    <td colspan="7"><strong>Lớp học hiện tại đang được cập nhật!</strong></td>
                 </tr>
             {% endfor %}
             </tbody>
