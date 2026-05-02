@@ -14,8 +14,8 @@
     e.preventDefault();
     const groupKey = this.getAttribute("data-id");
     if (!groupKey || !window.AdminCrudUrls) return;
-    const a = document.getElementById("confirmDeleteButton");
-    if (a) a.setAttribute("href", window.AdminCrudUrls.scheduleGroupDelete(groupKey));
+    const form = document.getElementById("scheduleDeleteForm");
+    if (form) form.action = window.AdminCrudUrls.scheduleGroupDelete(groupKey);
     const span = document.getElementById("classroomIdToDelete");
     if (span) span.textContent = groupKey;
     showModal("confirmDeleteModal");

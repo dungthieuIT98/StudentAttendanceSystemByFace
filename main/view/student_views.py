@@ -30,18 +30,6 @@ _DOW_LABEL = {
 }
 
 
-def _generate_session_dates(classroom):
-    """Return all weekly session dates for a classroom (begin_date → end_date)."""
-    python_dow = _DOW_TO_PYTHON.get(classroom.day_of_week_begin, 0)
-    days_until = (python_dow - classroom.begin_date.weekday()) % 7
-    current = classroom.begin_date + timedelta(days=days_until)
-    sessions = []
-    while current <= classroom.end_date:
-        sessions.append(current)
-        current += timedelta(days=7)
-    return sessions
-
-
 def _count_sessions_to_date(classrooms, reference_date=None):
     """
     Count total sessions that have occurred across a list of classrooms up to
@@ -172,6 +160,7 @@ def student_schedule_view(request):
             'session_date': session_date,
             'day_label': _DOW_LABEL.get(classroom.day_of_week_begin, ''),
             'status': status,
+            'attendance': att,
         })
 
     context = {
@@ -316,70 +305,6 @@ def student_checkpoint_view(request):
 
     return render(request, 'student/student_checkpoint.html', {
         'subjects': page_obj,
-        'today': today,
-    })
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Attendance History  (SESSION-based list, grouped by subject)
-# ─────────────────────────────────────────────────────────────────────────────
-
-@student_required
-def student_list_classroom_view(request):
-    id_student = request.session.get('id_student')
-    today = date.today()
-    subject_filter = request.GET.get('subject', '').strip()
-
-    classrooms = (
-        Classroom.objects
-        .filter(students__id_student=id_student)
-        .select_related('id_lecturer')
-        .order_by('name', 'begin_time')
-    )
-
-    # One query for all attendance records belonging to this student
-    all_attendance = {}
-    for a in Attendance.objects.filter(id_student=id_student):
-        local_date = dj_tz.localtime(a.check_in_time).date()
-        all_attendance[(a.id_classroom_id, local_date)] = a
-
-    subjects_map = {}
-    subject_names_set = set()
-
-    for classroom in classrooms:
-        key = classroom.group_key or str(classroom.id_classroom)
-        subject_names_set.add(classroom.name)
-
-        if key not in subjects_map:
-            subjects_map[key] = {
-                'name': classroom.name,
-                'sessions': [],
-            }
-
-        for session_date in _generate_session_dates(classroom):
-            att = all_attendance.get((classroom.id_classroom, session_date))
-            status = _session_status(att, session_date, today)
-
-            subjects_map[key]['sessions'].append({
-                'classroom': classroom,
-                'session_date': session_date,
-                'day_label': _DOW_LABEL.get(classroom.day_of_week_begin, ''),
-                'status': status,
-            })
-
-    subjects = []
-    for data in subjects_map.values():
-        if subject_filter and data['name'] != subject_filter:
-            continue
-        data['sessions'].sort(key=lambda s: s['session_date'], reverse=True)
-        subjects.append(data)
-
-    subjects.sort(key=lambda x: x['name'])
-
-    return render(request, 'student/student_list_classroom.html', {
-        'subjects': subjects,
-        'subject_names': sorted(subject_names_set),
-        'subject_filter': subject_filter,
         'today': today,
     })
 

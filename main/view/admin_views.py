@@ -526,9 +526,17 @@ def admin_schedule_edit(request, id_classroom):
         # Add missing days
         days_to_add = desired_days - existing_days
         if days_to_add:
+            # Get existing students linked to any classroom in this group
+            existing_student_ids = list(
+                StudentClassDetails.objects
+                .filter(id_classroom__group_key=group_key)
+                .values_list('id_student_id', flat=True)
+                .distinct()
+            )
+            
             with transaction.atomic():
                 for day in sorted(days_to_add):
-                    Classroom.objects.create(
+                    new_classroom = Classroom.objects.create(
                         group_key=group_key,
                         name=schedule.name,
                         begin_date=schedule.begin_date,
@@ -538,6 +546,12 @@ def admin_schedule_edit(request, id_classroom):
                         end_time=schedule.end_time,
                         id_lecturer_id=schedule.id_lecturer_id,
                     )
+                    # Link all existing students to the new classroom
+                    for student_id in existing_student_ids:
+                        StudentClassDetails.objects.create(
+                            id_classroom=new_classroom,
+                            id_student_id=student_id,
+                        )
         messages.success(request, 'Thay đổi thông tin thành công.')
         return redirect('admin_schedule_management')
     return render(request, 'admin/modal-popup/popup_edit_schedule.html', context)
@@ -606,9 +620,17 @@ def admin_schedule_group_edit(request, group_key):
     # Add missing days
     days_to_add = desired_days - existing_days
     if days_to_add:
+        # Get existing students linked to any classroom in this group
+        existing_student_ids = list(
+            StudentClassDetails.objects
+            .filter(id_classroom__group_key=group_key)
+            .values_list('id_student_id', flat=True)
+            .distinct()
+        )
+        
         with transaction.atomic():
             for day in sorted(days_to_add):
-                Classroom.objects.create(
+                new_classroom = Classroom.objects.create(
                     group_key=group_key,
                     name=name,
                     begin_date=begin_date,
@@ -618,6 +640,12 @@ def admin_schedule_group_edit(request, group_key):
                     end_time=end_time,
                     id_lecturer_id=id_lecturer,
                 )
+                # Link all existing students to the new classroom
+                for student_id in existing_student_ids:
+                    StudentClassDetails.objects.create(
+                        id_classroom=new_classroom,
+                        id_student_id=student_id,
+                    )
 
     messages.success(request, 'Thay đổi thông tin thành công.')
     return redirect('admin_schedule_management')
