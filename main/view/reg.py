@@ -1,22 +1,15 @@
 import logging
-import pickle
-from datetime import datetime, timedelta
-from collections import defaultdict
 import threading
 import os
+from datetime import datetime, timedelta
+
 import cv2
-import imutils
 import numpy as np
-import tensorflow as tf
-from imutils.video import VideoStream
 from django.db import transaction
-from main.src.anti_spoof_predict import AntiSpoofPredict
 from main.src.generate_patches import CropImage
-from main.src.utility import parse_model_name
 from main import facenet
-from main.align import detect_face
 from main.models import Classroom, Attendance, StudentInfo, StudentClassDetails
-import warnings
+from main.model_registry import get_registry
 
 # ---------------------------------------------------------------------------
 # Logger
@@ -28,13 +21,12 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-# Suppress noisy TF / sklearn warnings
-with warnings.catch_warnings():
-    warnings.simplefilter("ignore")
-
-model_test = AntiSpoofPredict(0)
+# Shared image cropper (stateless utility — safe to reuse across streams)
 image_cropper = CropImage()
-model_dir = "main/resources/anti_spoof_models"
+
+# How many camera frames to skip between full inference cycles.
+# 0 = process every frame; 2 = process every 3rd frame (recommended for CPU).
+FRAME_SKIP = 2
 
 # ---------------------------------------------------------------------------
 # In-memory cache: "just recognized" students (before DB commit completes)
@@ -294,46 +286,50 @@ def insert_attendance(id_classroom, student_id):
 
 
 # ---------------------------------------------------------------------------
-# MJPEG streaming generator — face recognition loop
+# MJPEG streaming generator — optimised face recognition loop
 # ---------------------------------------------------------------------------
 def main(id_subject):
+    """
+    Yields MJPEG frames.  Key optimisations vs. the original:
+
+    1. All AI models come from the process-level ModelRegistry singleton —
+       no FaceNet reload, no repeated torch.load().
+    2. Frame skipping (FRAME_SKIP): full inference runs on every
+       (FRAME_SKIP + 1)-th frame; intermediate frames are yielded as-is with
+       the last known annotations painted on.  Set FRAME_SKIP=0 to disable.
+    3. DB write is dispatched to a daemon thread so it never blocks the stream.
+    4. Absent-seeding (expensive N×get_or_create) is deferred to the background
+       thread alongside insert_attendance, not blocking the hot loop.
+    """
     INPUT_IMAGE_SIZE = 160
-    CLASSIFIER_PATH = "main/Models/facemodel.pkl"
-    FACENET_MODEL_PATH = "main/Models/20180402-114759.pb"
 
     logger.info("[STREAM] Starting face-recognition stream | classroom_id=%s", id_subject)
 
-    with open(CLASSIFIER_PATH, "rb") as file:
-        model, class_names = pickle.load(file)
-    logger.info("[STREAM] Classifier loaded | classes=%d", len(class_names))
-
-    facenet.load_model(FACENET_MODEL_PATH)
-    graph = tf.compat.v1.get_default_graph()
-    images_placeholder = graph.get_tensor_by_name("input:0")
-    embeddings = graph.get_tensor_by_name("embeddings:0")
-    phase_train_placeholder = graph.get_tensor_by_name("phase_train:0")
-
-    logger.info("[STREAM] FaceNet model loaded")
+    # Obtain the shared model registry (loaded once; subsequent calls are instant)
+    registry = get_registry()
+    model = registry.classifier
+    class_names = registry.class_names
 
     cap = _open_camera()
     if cap is None:
         logger.error("[STREAM] Cannot open camera | classroom_id=%s", id_subject)
         return
 
-    global justscanned, pause_cnt
-    justscanned = False
-    pause_cnt = 0
+    # Per-stream state
     current_face_name = ""
     current_face_progress = 0
-
-    # In-memory set of student IDs already saved this session
-    recognized_names = []
-
-    # Overlay "Đã lưu" sau khi ghi attendance thành công
+    justscanned = False
+    recognized_names: list[str] = []
     last_saved_student_name = ""
     save_display_frames_left = 0
 
-    sess = tf.compat.v1.Session(graph=graph)
+    # Frame skip counter — counts frames since last inference
+    skip_counter = 0
+
+    # Cache last bbox so skipped frames can still draw the box
+    last_bbox: list[int] | None = None
+    last_label_is_spoof = False
+
     consecutive_read_failures = 0
     MAX_CONSECUTIVE_READ_FAILURES = 30
 
@@ -344,12 +340,10 @@ def main(id_subject):
             if consecutive_read_failures % 10 == 0:
                 logger.warning(
                     "[STREAM] Failed to read frame | classroom_id=%s | consecutive=%d",
-                    id_subject, consecutive_read_failures
+                    id_subject, consecutive_read_failures,
                 )
-
-            # If camera becomes busy/disconnected, try reopening.
             if consecutive_read_failures >= MAX_CONSECUTIVE_READ_FAILURES:
-                logger.error("[STREAM] Reopening camera after read failures | classroom_id=%s", id_subject)
+                logger.error("[STREAM] Reopening camera | classroom_id=%s", id_subject)
                 try:
                     cap.release()
                 except Exception:
@@ -360,225 +354,237 @@ def main(id_subject):
 
         consecutive_read_failures = 0
 
-        image_bbox = model_test.get_bbox(frame)
+        # ----------------------------------------------------------------
+        # Frame-skip: only run expensive ML every (FRAME_SKIP+1) frames.
+        # Skipped frames get the previous bbox drawn but skip detection.
+        # ----------------------------------------------------------------
+        skip_counter += 1
+        run_inference = skip_counter > FRAME_SKIP
+        if run_inference:
+            skip_counter = 0
 
-        # ----------------------------------------------------------------
-        # No face detected
-        # ----------------------------------------------------------------
-        if image_bbox is None:
-            logger.debug("[STREAM] No face detected | classroom_id=%s | timestamp=%s",
-                         id_subject, datetime.now().strftime("%H:%M:%S"))
-            # Vẫn hiển thị overlay "Đã lưu" nếu còn frames
+        if not run_inference:
+            # Re-draw last known annotations cheaply
+            if last_bbox is not None:
+                color = (0, 255, 255) if last_label_is_spoof else (0, 255, 0)
+                bx, by, bw, bh = last_bbox
+                cv2.rectangle(frame, (bx, by - 10), (bx + bw, by + bh), color, 2)
             if save_display_frames_left > 0:
                 draw_save_overlay(frame, last_saved_student_name)
                 save_display_frames_left -= 1
-
-            ret, buffer = cv2.imencode(".jpg", frame)
-            yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n")
+            ret, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n"
             continue
 
         # ----------------------------------------------------------------
-        # Face detected — run liveness check
+        # Full inference cycle
         # ----------------------------------------------------------------
+        image_bbox = registry.get_bbox(frame)
+
+        if image_bbox is None:
+            last_bbox = None
+            logger.debug(
+                "[STREAM] No face detected | classroom_id=%s | ts=%s",
+                id_subject, datetime.now().strftime("%H:%M:%S"),
+            )
+            if save_display_frames_left > 0:
+                draw_save_overlay(frame, last_saved_student_name)
+                save_display_frames_left -= 1
+            ret, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n"
+            continue
+
+        last_bbox = image_bbox
         frame_h, frame_w = frame.shape[:2]
-        x = max(0, image_bbox[0])
-        y = max(0, image_bbox[1] - 50)
-        w = min(frame_w, image_bbox[0] + image_bbox[2])
-        h = min(frame_h, image_bbox[1] + image_bbox[3])
 
-        logger.debug("[STREAM] Face bbox detected | classroom_id=%s | bbox=[%d,%d,%d,%d]",
-                     id_subject, x, y, w, h)
+        # Bounds-safe crop coordinates for face recognition
+        bx = max(0, image_bbox[0])
+        by = max(0, image_bbox[1])
+        bx2 = min(frame_w, image_bbox[0] + image_bbox[2])
+        by2 = min(frame_h, image_bbox[1] + image_bbox[3])
 
-        prediction = np.zeros((1, 3))
-        for model_name in os.listdir(model_dir):
-            h_input, w_input, model_type, scale = parse_model_name(model_name)
-            param = {
-                "org_img": frame,
-                "bbox": image_bbox,
-                "scale": scale,
-                "out_w": w_input,
-                "out_h": h_input,
-                "crop": True,
-            }
-            if scale is None:
-                param["crop"] = False
-            img = image_cropper.crop(**param)
-            prediction += model_test.predict(img, os.path.join(model_dir, model_name))
-
-        label = np.argmax(prediction)
-        value = prediction[0][label] / 2
+        # ----------------------------------------------------------------
+        # Liveness / anti-spoof check
+        # ----------------------------------------------------------------
+        prediction = registry.predict_antispoof(frame, image_bbox, image_cropper)
+        label = int(np.argmax(prediction))
+        value = float(prediction[0][label]) / len(registry.antispoof_models)
+        last_label_is_spoof = label != 1
 
         if label != 1:
-            # Liveness check failed — spoof detected
-            logger.warning("[STREAM] Liveness FAILED (spoof) | classroom_id=%s | score=%.3f",
-                           id_subject, value)
-            result_text = "Gia mao !!!"
+            logger.warning(
+                "[STREAM] Liveness FAILED (spoof) | classroom_id=%s | score=%.3f",
+                id_subject, value,
+            )
             color = (0, 255, 255)
-            cv2.rectangle(frame, (image_bbox[0], image_bbox[1] - 50),
-                          (image_bbox[0] + image_bbox[2], image_bbox[1] + image_bbox[3]),
-                          color, 2)
-            cv2.putText(frame, result_text, (image_bbox[0], image_bbox[1]),
-                        cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, color, thickness=1, lineType=2)
-
+            cv2.rectangle(
+                frame,
+                (image_bbox[0], max(0, image_bbox[1] - 50)),
+                (image_bbox[0] + image_bbox[2], image_bbox[1] + image_bbox[3]),
+                color, 2,
+            )
+            cv2.putText(
+                frame, "Gia mao !!!", (image_bbox[0], image_bbox[1]),
+                cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, color, thickness=1, lineType=2,
+            )
             if save_display_frames_left > 0:
                 draw_save_overlay(frame, last_saved_student_name)
                 save_display_frames_left -= 1
-
-            ret, buffer = cv2.imencode(".jpg", frame)
-            yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n")
+            ret, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n"
             continue
 
-        # ----------------------------------------------------------------
-        # Liveness passed — run face recognition
-        # ----------------------------------------------------------------
-        logger.debug("[STREAM] Liveness OK | classroom_id=%s | liveness_score=%.3f", id_subject, value)
+        logger.debug(
+            "[STREAM] Liveness OK | classroom_id=%s | score=%.3f", id_subject, value
+        )
 
-        cropped = frame[y:h, x:w, :]
+        # ----------------------------------------------------------------
+        # Face recognition (FaceNet + sklearn)
+        # ----------------------------------------------------------------
+        cropped = frame[by:by2, bx:bx2, :]
         if cropped is None or cropped.size == 0:
-            logger.warning("[STREAM] Cropped face region is empty | classroom_id=%s", id_subject)
-            ret, buffer = cv2.imencode(".jpg", frame)
-            yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n")
+            ret, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n"
             continue
 
-        scaled = cv2.resize(cropped, (INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE),
-                            interpolation=cv2.INTER_CUBIC)
+        scaled = cv2.resize(cropped, (INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE), interpolation=cv2.INTER_LINEAR)
         scaled = cv2.cvtColor(scaled, cv2.COLOR_BGR2RGB)
         scaled = facenet.prewhiten(scaled)
         scaled_reshape = scaled.reshape(-1, INPUT_IMAGE_SIZE, INPUT_IMAGE_SIZE, 3)
 
-        feed_dict = {images_placeholder: scaled_reshape, phase_train_placeholder: False}
-        emb_array = sess.run(embeddings, feed_dict=feed_dict)
+        emb_array = registry.get_embedding(scaled_reshape)
 
-        predictions = model.predict_proba(emb_array)
-        best_class_indices = np.argmax(predictions, axis=1)
-        best_class_probabilities = predictions[np.arange(len(best_class_indices)), best_class_indices]
-        pkl_name = class_names[best_class_indices[0]]
-        # Translate pkl folder name → real DB student ID
+        probs = model.predict_proba(emb_array)
+        best_idx = int(np.argmax(probs, axis=1)[0])
+        confidence = float(probs[0, best_idx])
+        pkl_name = class_names[best_idx]
         best_name = PKL_TO_DB_STUDENT_ID.get(pkl_name, pkl_name)
-        confidence = float(best_class_probabilities[0])
 
         logger.info(
-            "[RECOGNITION] Result | classroom_id=%s | pkl_name=%s | db_student_id=%s | confidence=%.4f | threshold=%.2f | timestamp=%s",
-            id_subject, pkl_name, best_name, confidence, CONFIDENCE_THRESHOLD,
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "[RECOGNITION] pkl=%s db=%s conf=%.4f threshold=%.2f | classroom=%s",
+            pkl_name, best_name, confidence, CONFIDENCE_THRESHOLD, id_subject,
         )
 
         # ----------------------------------------------------------------
-        # Confidence gate (>= 0.8)
+        # Confidence gate
         # ----------------------------------------------------------------
         if confidence < CONFIDENCE_THRESHOLD:
             current_face_name = "UNKNOWN"
             current_face_progress = 0
             justscanned = False
-            logger.debug(
-                "[RECOGNITION] Below threshold — marking UNKNOWN | student_id=%s | confidence=%.4f",
-                best_name, confidence,
+            cv2.rectangle(frame, (bx, by), (bx2, by2), (0, 200, 0), 2)
+            cv2.putText(
+                frame, "UNKNOWN", (bx, by2 + 20),
+                cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (255, 255, 255), 1, 2,
             )
-            cv2.rectangle(frame, (x, y), (w, h), (0, 255, 0), 2)
-            cv2.putText(frame, "UNKNOWN", (x, h + 20), cv2.FONT_HERSHEY_COMPLEX_SMALL,
-                        1, (255, 255, 255), thickness=1, lineType=2)
-
             if save_display_frames_left > 0:
                 draw_save_overlay(frame, last_saved_student_name)
                 save_display_frames_left -= 1
-
-            ret, buffer = cv2.imencode(".jpg", frame)
-            yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n")
+            ret, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n"
             continue
 
         # ----------------------------------------------------------------
         # Already saved this session
         # ----------------------------------------------------------------
         if best_name in recognized_names:
-            message = f"{best_name} da diem danh."
-            logger.debug("[RECOGNITION] Already recorded this session | student_id=%s", best_name)
-            cv2.rectangle(frame, (x, y), (w, h), (0, 0, 255), 2)
-            cv2.putText(frame, message, (x, y - 10), cv2.FONT_HERSHEY_COMPLEX_SMALL,
-                        1, (0, 0, 255), thickness=1, lineType=2)
-
+            cv2.rectangle(frame, (bx, by), (bx2, by2), (0, 0, 255), 2)
+            cv2.putText(
+                frame, f"{best_name} da diem danh.", (bx, by - 10),
+                cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (0, 0, 255), 1, 2,
+            )
             if save_display_frames_left > 0:
                 draw_save_overlay(frame, last_saved_student_name)
                 save_display_frames_left -= 1
-
-            ret, buffer = cv2.imencode(".jpg", frame)
-            yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n")
+            ret, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n"
             continue
 
         # ----------------------------------------------------------------
-        # Stable frame accumulation
+        # Stable-frame accumulation
         # ----------------------------------------------------------------
         if current_face_name != best_name:
-            logger.debug("[RECOGNITION] Face changed: %s → %s | resetting progress",
-                         current_face_name, best_name)
             current_face_name = best_name
             current_face_progress = 0
             justscanned = False
         elif not justscanned:
             current_face_progress += 1
             progress = current_face_progress / STABLE_FRAME_REQUIREMENT
-            draw_progress_bar(frame, progress, x, y, w, h)
-            logger.debug(
-                "[RECOGNITION] Stable frame %d/%d | student_id=%s | confidence=%.4f",
-                current_face_progress, STABLE_FRAME_REQUIREMENT, best_name, confidence,
-            )
+            draw_progress_bar(frame, progress, bx, by, bx2, by2)
 
-        cv2.rectangle(frame, (x, y), (w, h), (0, 255, 0), 2)
-        cv2.putText(frame, best_name, (x, h + 20), cv2.FONT_HERSHEY_COMPLEX_SMALL,
-                    1, (255, 255, 255), thickness=1, lineType=2)
-        cv2.putText(frame, str(round(confidence, 3)), (x, h + 37),
-                    cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (255, 255, 255), thickness=1, lineType=2)
+        cv2.rectangle(frame, (bx, by), (bx2, by2), (0, 255, 0), 2)
+        cv2.putText(
+            frame, best_name, (bx, by2 + 20),
+            cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (255, 255, 255), 1, 2,
+        )
+        cv2.putText(
+            frame, f"{confidence:.3f}", (bx, by2 + 37),
+            cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (255, 255, 255), 1, 2,
+        )
 
         # ----------------------------------------------------------------
-        # Trigger DB save after STABLE_FRAME_REQUIREMENT consecutive frames
+        # Trigger DB save — dispatched to a background thread so the stream
+        # generator is never blocked by the attendance transaction.
         # ----------------------------------------------------------------
-        if current_face_progress >= STABLE_FRAME_REQUIREMENT:
+        if current_face_progress >= STABLE_FRAME_REQUIREMENT and not justscanned:
             justscanned = True
             recognized_names.append(best_name)
             logger.info(
-                "[ATTENDANCE] Triggering save | classroom_id=%s | student_id=%s | confidence=%.4f | timestamp=%s",
-                id_subject, best_name, confidence, datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "[ATTENDANCE] Triggering save | classroom=%s | student=%s | conf=%.4f",
+                id_subject, best_name, confidence,
             )
 
-            # Xác định status (đúng giờ / trễ) để thêm vào cache
+            # Compute status before handing off (cheap; avoids race on datetime)
+            now_ts = datetime.now()
             try:
                 classroom_obj = Classroom.objects.get(pk=id_subject)
-                begin_time = classroom_obj.begin_time
-                now_ts = datetime.now()
-                time_difference = (
-                    datetime.combine(now_ts.date(), now_ts.time()) - datetime.combine(now_ts.date(), begin_time)
+                diff = (
+                    datetime.combine(now_ts.date(), now_ts.time())
+                    - datetime.combine(now_ts.date(), classroom_obj.begin_time)
                 )
-                attendance_status = 3 if time_difference.total_seconds() > 900 else 2
+                attendance_status = 3 if diff.total_seconds() > 900 else 2
             except Exception:
-                attendance_status = 2  # Fallback
+                attendance_status = 2
 
-            # Lấy tên sinh viên từ DB để cache có đầy đủ info
             try:
-                student_obj = StudentInfo.objects.get(pk=best_name)
-                student_name = student_obj.student_name
+                student_name = StudentInfo.objects.get(pk=best_name).student_name
             except Exception:
-                student_name = best_name  # Fallback
+                student_name = best_name
 
-            # ĐƯA VÀO CACHE NGAY (trước khi ghi DB) → UI thấy ngay lập tức
+            # Update in-memory cache immediately so the UI shows it now
             add_pending_attendance(id_subject, best_name, student_name, attendance_status)
-            logger.info("[ATTENDANCE] Added to pending cache | student_id=%s | status=%d", best_name, attendance_status)
 
-            # Sau đó mới ghi DB (có thể chậm hơn do transaction)
-            result = insert_attendance(id_subject, best_name)
-            logger.info("[ATTENDANCE] insert_attendance returned: %s", result)
+            # DB write runs in a daemon thread — stream is never stalled
+            _student_id_snap = best_name
+            _classroom_id_snap = id_subject
+            t = threading.Thread(
+                target=_save_attendance_bg,
+                args=(_classroom_id_snap, _student_id_snap),
+                daemon=True,
+            )
+            t.start()
 
-            # Hiển thị overlay "Đã lưu" trong 40 frames tiếp theo (~1-2s tùy FPS)
             last_saved_student_name = best_name
             save_display_frames_left = 40
 
-        # Overlay "Đã lưu" nếu vừa save xong
         if save_display_frames_left > 0:
             draw_save_overlay(frame, last_saved_student_name)
             save_display_frames_left -= 1
 
-        ret, buffer = cv2.imencode(".jpg", frame)
-        yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n")
+        ret, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n"
 
-    sess.close()
     cap.release()
-    cv2.destroyAllWindows()
     logger.info("[STREAM] Stream ended | classroom_id=%s", id_subject)
+
+
+def _save_attendance_bg(classroom_id, student_id):
+    """Run insert_attendance in a daemon thread; errors are logged, not raised."""
+    try:
+        result = insert_attendance(classroom_id, student_id)
+        logger.info("[ATTENDANCE] Background save done: %s", result)
+    except Exception as exc:
+        logger.exception(
+            "[ATTENDANCE] Background save failed | classroom=%s | student=%s | error=%s",
+            classroom_id, student_id, exc,
+        )

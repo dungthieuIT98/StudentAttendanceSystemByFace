@@ -111,7 +111,7 @@
                             </div>
                             <div class="flex-grow-1 min-width-0">
                                 <div class="fw-semibold text-truncate">{{ a.id_student.id_student }} • {{ a.id_student.student_name }}</div>
-                                <div class="small text-muted">{{ a.check_in_time|date:"H:i:s" }}</div>
+                                <div class="small text-muted">{{ a.check_in_clock_sa_ch }}</div>
                             </div>
                             {% if a.attendance_status == 2 %}
                                 <span class="badge bg-success">Đúng giờ</span>
@@ -160,7 +160,7 @@
         let _recognizedStreamFrameSeq = 0;
         let _lastRefreshOnStreamMs = 0;
         /** Sau khi stream camera trả khung hình thành công: gọi lại API danh sách điểm danh */
-        const REFRESH_AFTER_STREAM_MS = 500;  // Giảm xuống 500ms để nhanh hơn
+        const REFRESH_AFTER_STREAM_MS = 1000;
 
         function _statusBadge(status) {
             if (status === 2) return '<span class="badge bg-success">Đúng giờ</span>';
@@ -280,8 +280,10 @@
         }
 
         // Poll server for newly recognized students (chạy ngay, không đợi window.load)
+        // 1000ms is sufficient — DB writes are near-instant via background thread.
+        // Dropping from 500ms halves the number of HTTP requests to Django.
         refreshRecognized();
-        const _pollIntervalId = setInterval(refreshRecognized, 500);
+        const _pollIntervalId = setInterval(refreshRecognized, 1000);
 
         // Cleanup khi SPA navigate away
         window.addEventListener('beforeunload', () => {

@@ -90,17 +90,31 @@ class AntiSpoofPredict(Detection):
         return None
 
     def predict(self, img, model_path):
-        # Load model once per path, cache to avoid re-reading from disk every frame
-        if not hasattr(self, '_cached_model_path') or self._cached_model_path != model_path:
-            self._load_model(model_path)
-            self._cached_model_path = model_path
+        """
+        Run inference for a single model_path.
 
-        test_transform = trans.Compose([
-            trans.ToTensor(),
-        ])
-        img = test_transform(img)
-        img = img.unsqueeze(0).to(self.device)
+        NOTE: When multiple .pth files are iterated inside a loop (e.g. two
+        anti-spoof checkpoints), the previous single-slot ``_cached_model_path``
+        would alternate paths on every call, causing a full torch.load() on
+        every frame.  The canonical solution is to use ModelRegistry which
+        pre-loads all models into a dict at startup.
+
+        This method is retained for backward compatibility with any code that
+        calls it directly (e.g. admin capture path).  For the live recognition
+        stream, prefer ``ModelRegistry.predict_antispoof()``.
+        """
+        if not hasattr(self, "_model_cache"):
+            self._model_cache: dict = {}
+
+        if model_path not in self._model_cache:
+            self._load_model(model_path)
+            # Store a reference to the loaded model keyed by path
+            self._model_cache[model_path] = self.model
+
+        cached_model = self._model_cache[model_path]
+        test_transform = trans.Compose([trans.ToTensor()])
+        img = test_transform(img).unsqueeze(0).to(self.device)
         with torch.no_grad():
-            result = self.model.forward(img)
+            result = cached_model(img)
             result = F.softmax(result, dim=1).cpu().numpy()
         return result

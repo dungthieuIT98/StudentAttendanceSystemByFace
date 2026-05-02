@@ -6,18 +6,92 @@ from django.contrib.auth.hashers import make_password, check_password
 from django.core.paginator import Paginator
 from django.http import Http404
 from django.shortcuts import redirect, render
+from django.utils import timezone as dj_tz
 
 from main.decorators import student_required
 from main.models import StudentInfo, Classroom, Attendance
 from main.models import BlogPost
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Shared helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+# System day-of-week code (1=Mon … 7=Sun) → Python weekday() (0=Mon … 6=Sun)
+_DOW_TO_PYTHON = {1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6}
+
+_DOW_LABEL = {
+    1: 'Thứ Hai',
+    2: 'Thứ Ba',
+    3: 'Thứ Tư',
+    4: 'Thứ Năm',
+    5: 'Thứ Sáu',
+    6: 'Thứ Bảy',
+    7: 'Chủ Nhật',
+}
+
+
+def _generate_session_dates(classroom):
+    """Return all weekly session dates for a classroom (begin_date → end_date)."""
+    python_dow = _DOW_TO_PYTHON.get(classroom.day_of_week_begin, 0)
+    days_until = (python_dow - classroom.begin_date.weekday()) % 7
+    current = classroom.begin_date + timedelta(days=days_until)
+    sessions = []
+    while current <= classroom.end_date:
+        sessions.append(current)
+        current += timedelta(days=7)
+    return sessions
+
+
+def _count_sessions_to_date(classrooms, reference_date=None):
+    """
+    Count total sessions that have occurred across a list of classrooms up to
+    (and including) reference_date.
+    """
+    if reference_date is None:
+        reference_date = date.today()
+
+    total = 0
+    for cls in classrooms:
+        python_dow = _DOW_TO_PYTHON.get(cls.day_of_week_begin, 0)
+        end = min(cls.end_date, reference_date)
+        if cls.begin_date > end:
+            continue
+        days_until = (python_dow - cls.begin_date.weekday()) % 7
+        first = cls.begin_date + timedelta(days=days_until)
+        if first > end:
+            continue
+        total += (end - first).days // 7 + 1
+
+    return total
+
+
+def _session_status(attendance_record, session_date, today):
+    """
+    Resolve display status for a single session:
+      2  = attended (on time)
+      3  = attended (late)
+      1  = absent (recorded or inferred from missing record)
+      0  = today — session is happening today, not checked in yet
+     -1  = upcoming (future session)
+    """
+    if attendance_record is not None:
+        return attendance_record.attendance_status
+    if session_date < today:
+        return 1    # past with no record → treat as absent
+    if session_date == today:
+        return 0    # today, not yet checked in
+    return -1       # future
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Auth
+# ─────────────────────────────────────────────────────────────────────────────
 
 def student_login_view(request):
     error_message = None
     if request.method == 'POST':
         id_student = request.POST.get('id_student')
         password = request.POST.get('password')
-
         try:
             student = StudentInfo.objects.get(id_student=id_student)
             if check_password(password, student.password):
@@ -34,9 +108,12 @@ def student_login_view(request):
 @student_required
 def student_dashboard_view(request):
     blog_posts = BlogPost.objects.filter(type__in=["ALL", "SV"])
-
     return render(request, 'student/student_home.html', {'blog_posts': blog_posts})
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Schedule  (SUBJECT → week sessions with attendance status)
+# ─────────────────────────────────────────────────────────────────────────────
 
 @student_required
 def student_schedule_view(request):
@@ -50,32 +127,67 @@ def student_schedule_view(request):
             raise Http404("Invalid date format for week_start parameter")
     else:
         today = date.today()
-        week_start = today - timedelta(days=today.weekday())
+        week_start = today - timedelta(days=today.weekday())  # always Monday
 
     end_of_week = week_start + timedelta(days=6)
+    today = date.today()
 
-    student_classes = Classroom.objects.filter(
-        students__id_student=id_student,
-        begin_date__lte=end_of_week,
-        end_date__gte=week_start,
-    ).order_by('day_of_week_begin', 'begin_time')
+    classrooms = (
+        Classroom.objects
+        .filter(
+            students__id_student=id_student,
+            begin_date__lte=end_of_week,
+            end_date__gte=week_start,
+        )
+        .select_related('id_lecturer')
+        .order_by('day_of_week_begin', 'begin_time')
+    )
 
-    previous_week_start = week_start - timedelta(days=7)
-    next_week_start = week_start + timedelta(days=7)
+    # One DB round-trip for all attendance in this week
+    classroom_ids = [c.id_classroom for c in classrooms]
+    week_att_qs = Attendance.objects.filter(
+        id_student=id_student,
+        id_classroom__in=classroom_ids,
+        check_in_time__date__range=(week_start, end_of_week),
+    )
+    week_attendance = {}
+    for a in week_att_qs:
+        local_date = dj_tz.localtime(a.check_in_time).date()
+        week_attendance[(a.id_classroom_id, local_date)] = a
 
-    previous_week_start = previous_week_start.strftime("%Y-%m-%d")
-    next_week_start = next_week_start.strftime("%Y-%m-%d")
+    sessions = []
+    for classroom in classrooms:
+        python_dow = _DOW_TO_PYTHON.get(classroom.day_of_week_begin, 0)
+        session_date = week_start + timedelta(days=python_dow)
+
+        # Skip if this classroom hasn't started or already ended by this week's date
+        if session_date < classroom.begin_date or session_date > classroom.end_date:
+            continue
+
+        att = week_attendance.get((classroom.id_classroom, session_date))
+        status = _session_status(att, session_date, today)
+
+        sessions.append({
+            'classroom': classroom,
+            'session_date': session_date,
+            'day_label': _DOW_LABEL.get(classroom.day_of_week_begin, ''),
+            'status': status,
+        })
 
     context = {
-        'student_classes': student_classes,
+        'sessions': sessions,
         'start_of_week': week_start,
         'end_of_week': end_of_week,
-        'previous_week_start': previous_week_start,
-        'next_week_start': next_week_start,
+        'today': today,
+        'previous_week_start': (week_start - timedelta(days=7)).strftime('%Y-%m-%d'),
+        'next_week_start': (week_start + timedelta(days=7)).strftime('%Y-%m-%d'),
     }
-
     return render(request, 'student/student_schedule.html', context)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Profile & password
+# ─────────────────────────────────────────────────────────────────────────────
 
 @student_required
 def student_profile_view(request):
@@ -91,9 +203,7 @@ def student_profile_view(request):
         student.save()
         messages.success(request, 'Thay đổi thông tin thành công.')
 
-    context = {'student': student}
-
-    return render(request, 'student/student_profile.html', context)
+    return render(request, 'student/student_profile.html', {'student': student})
 
 
 @student_required
@@ -120,111 +230,158 @@ def student_change_password_view(request):
     return render(request, 'student/student_change_password.html')
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Checkpoint  (SUBJECT → aggregate attendance stats)
+# ─────────────────────────────────────────────────────────────────────────────
+
 @student_required
 def student_checkpoint_view(request):
-    id_student = request.session['id_student']
+    id_student = request.session.get('id_student')
+    today = date.today()
 
-    student_classes = Classroom.objects.filter(
-        students__id_student=id_student,
-    ).order_by('name', 'begin_time', 'day_of_week_begin')
+    classrooms = (
+        Classroom.objects
+        .filter(students__id_student=id_student)
+        .select_related('id_lecturer')
+        .order_by('name', 'begin_time', 'day_of_week_begin')
+    )
 
-    current_date = date.today()
-    classroom_per_page = 5
-    page_number = request.GET.get('page')
-
-    grouped_scores = {}
-    for classroom in student_classes:
-        key = classroom.group_key or str(classroom.id_classroom)
-        
-        if key not in grouped_scores:
-            grouped_scores[key] = {
+    # Group classrooms by subject (group_key, or individual id as fallback)
+    grouped = {}
+    for cls in classrooms:
+        key = cls.group_key or str(cls.id_classroom)
+        if key not in grouped:
+            grouped[key] = {
+                'name': cls.name,
                 'classrooms': [],
-                'days': [],
-                'name': classroom.name,
-                'begin_date': classroom.begin_date,
-                'end_date': classroom.end_date,
-                'begin_time': classroom.begin_time,
-                'end_time': classroom.end_time,
-                'absent_count': 0,
-                'present_count': 0,
-                'late_count': 0,
+                'begin_date': cls.begin_date,
+                'end_date': cls.end_date,
             }
-        
-        grouped_scores[key]['classrooms'].append(classroom)
-        grouped_scores[key]['days'].append(classroom.day_of_week_begin)
-        
-        absent_count = Attendance.objects.filter(
-            attendance_status=1,
-            id_student=id_student,
-            id_classroom=classroom.id_classroom,
-        ).count()
+        g = grouped[key]
+        g['classrooms'].append(cls)
+        if cls.begin_date < g['begin_date']:
+            g['begin_date'] = cls.begin_date
+        if cls.end_date > g['end_date']:
+            g['end_date'] = cls.end_date
 
-        present_count = Attendance.objects.filter(
+    subjects = []
+    for data in grouped.values():
+        cls_ids = [c.id_classroom for c in data['classrooms']]
+        total_sessions = _count_sessions_to_date(data['classrooms'], today)
+
+        attended = Attendance.objects.filter(
+            id_student=id_student,
+            id_classroom__in=cls_ids,
             attendance_status=2,
-            id_student=id_student,
-            id_classroom=classroom.id_classroom,
         ).count()
 
-        late_count = Attendance.objects.filter(
+        late = Attendance.objects.filter(
+            id_student=id_student,
+            id_classroom__in=cls_ids,
             attendance_status=3,
-            id_student=id_student,
-            id_classroom=classroom.id_classroom,
         ).count()
-        
-        grouped_scores[key]['absent_count'] += absent_count
-        grouped_scores[key]['present_count'] += present_count
-        grouped_scores[key]['late_count'] += late_count
 
-    attendance_scores = []
-    for key, data in grouped_scores.items():
-        total_number_attendance = data['absent_count'] + data['late_count'] + data['present_count']
-        total_attendance_present = data['late_count'] + data['present_count']
-        total_attendance_percentage = round((((data['absent_count'] * 0) + (data['late_count'] * 0.5) + data['present_count']) / 9) * 3, 2) if total_number_attendance > 0 else 0
+        recorded_absent = Attendance.objects.filter(
+            id_student=id_student,
+            id_classroom__in=cls_ids,
+            attendance_status=1,
+        ).count()
 
-        attendance_scores.append({
+        # Unrecorded past sessions (no one used face-scan) also count as absent
+        recorded_total = attended + late + recorded_absent
+        unrecorded_absent = max(0, total_sessions - recorded_total)
+        total_absent = recorded_absent + unrecorded_absent
+        total_present = attended + late
+
+        rate = round(total_present / total_sessions * 100, 1) if total_sessions > 0 else 0.0
+
+        subjects.append({
             'name': data['name'],
-            'days': sorted(data['days']),
             'begin_date': data['begin_date'],
             'end_date': data['end_date'],
-            'begin_time': data['begin_time'],
-            'end_time': data['end_time'],
-            'absent_count': data['absent_count'],
-            'present_count': data['present_count'],
-            'late_count': data['late_count'],
-            'total_number_attendance': total_number_attendance,
-            'total_attendance_present': total_attendance_present,
-            'total_attendance_percentage': total_attendance_percentage,
+            'total_sessions': total_sessions,
+            'attended': attended,
+            'late': late,
+            'absent': total_absent,
+            'total_present': total_present,
+            'attendance_rate': rate,
+            # Risk: more than 20% of occurred sessions were absent
+            'is_at_risk': total_sessions > 0 and total_absent > (total_sessions * 0.2),
         })
 
-    attendance_scores.sort(key=lambda x: (x['name'], x['begin_time']))
+    subjects.sort(key=lambda x: x['name'])
 
-    paginator = Paginator(attendance_scores, classroom_per_page)
-    page = paginator.get_page(page_number)
+    paginator = Paginator(subjects, 10)
+    page_obj = paginator.get_page(request.GET.get('page'))
 
-    context = {
-        'attendance_scores': page,
-        'current_date': current_date,
-    }
+    return render(request, 'student/student_checkpoint.html', {
+        'subjects': page_obj,
+        'today': today,
+    })
 
-    return render(request, 'student/student_checkpoint.html', context)
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Attendance History  (SESSION-based list, grouped by subject)
+# ─────────────────────────────────────────────────────────────────────────────
 
 @student_required
 def student_list_classroom_view(request):
     id_student = request.session.get('id_student')
-    classroom_per_page = 5
-    page_number = request.GET.get('page')
+    today = date.today()
+    subject_filter = request.GET.get('subject', '').strip()
 
-    student_classes = Classroom.objects.filter(
-        students__id_student=id_student,
-    ).order_by('day_of_week_begin', 'begin_time')
+    classrooms = (
+        Classroom.objects
+        .filter(students__id_student=id_student)
+        .select_related('id_lecturer')
+        .order_by('name', 'begin_time')
+    )
 
-    paginator = Paginator(student_classes, classroom_per_page)
-    page = paginator.get_page(page_number)
+    # One query for all attendance records belonging to this student
+    all_attendance = {}
+    for a in Attendance.objects.filter(id_student=id_student):
+        local_date = dj_tz.localtime(a.check_in_time).date()
+        all_attendance[(a.id_classroom_id, local_date)] = a
 
-    context = {'classrooms': page}
+    subjects_map = {}
+    subject_names_set = set()
 
-    return render(request, 'student/student_list_classroom.html', context)
+    for classroom in classrooms:
+        key = classroom.group_key or str(classroom.id_classroom)
+        subject_names_set.add(classroom.name)
+
+        if key not in subjects_map:
+            subjects_map[key] = {
+                'name': classroom.name,
+                'sessions': [],
+            }
+
+        for session_date in _generate_session_dates(classroom):
+            att = all_attendance.get((classroom.id_classroom, session_date))
+            status = _session_status(att, session_date, today)
+
+            subjects_map[key]['sessions'].append({
+                'classroom': classroom,
+                'session_date': session_date,
+                'day_label': _DOW_LABEL.get(classroom.day_of_week_begin, ''),
+                'status': status,
+            })
+
+    subjects = []
+    for data in subjects_map.values():
+        if subject_filter and data['name'] != subject_filter:
+            continue
+        data['sessions'].sort(key=lambda s: s['session_date'], reverse=True)
+        subjects.append(data)
+
+    subjects.sort(key=lambda x: x['name'])
+
+    return render(request, 'student/student_list_classroom.html', {
+        'subjects': subjects,
+        'subject_names': sorted(subject_names_set),
+        'subject_filter': subject_filter,
+        'today': today,
+    })
 
 
 @student_required
@@ -233,11 +390,10 @@ def student_attendance_history_view(request, classroom_id):
     classroom = Classroom.objects.get(pk=classroom_id)
     students_attendance = Attendance.objects.filter(
         id_student=id_student,
-        id_classroom=classroom)
+        id_classroom=classroom,
+    ).order_by('check_in_time')
 
-    context = {
+    return render(request, 'student/student_attendance_history.html', {
         'students_attendance': students_attendance,
-        'classroom': classroom
-    }
-
-    return render(request, 'student/student_attendance_history.html', context)
+        'classroom': classroom,
+    })

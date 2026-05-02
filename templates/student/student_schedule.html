@@ -1,64 +1,105 @@
 {% extends "student/base_student_dashboard.html" %}
 
 {% block content %}
-    <div class="card">
-        <div class="card-body">
-            <h4 class="card-title">Thời Khóa Biểu</h4>
-        </div>
-        <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center">
-                <a href="?week_start={{ previous_week_start }}" class="btn btn-sm btn-primary">Tuần Trước</a>
-                <h5 class="mb-0">
-                    Tuần từ ngày
-                    <strong class="text-danger">{{ start_of_week|date:"d/m/Y" }}</strong>
-                    đến ngày
-                    <strong class="text-danger">{{ end_of_week|date:"d/m/Y" }}</strong>
-                </h5>
-                <a href="?week_start={{ next_week_start }}" class="btn btn-sm btn-primary">Tuần Sau</a>
-            </div>
-        </div>
-        <table class="table">
-            <thead>
-            <tr>
-                <th class="text-center" scope="col">Thứ</th>
-                <th class="text-center" scope="col">Giảng viên</th>
-                <th scope="col">Môn Học</th>
-                <th class="text-center" scope="col">Thời gian bắt đầu</th>
-                <th class="text-center" scope="col">Thời gian kết thúc</th>
-            </tr>
+<!-- Page header -->
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+        <h4 class="fw-bold mb-1">Thời Khóa Biểu</h4>
+        <p class="text-muted small mb-0">Lịch học trong tuần</p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <a href="?week_start={{ previous_week_start }}" class="btn btn-outline-primary btn-sm px-3">
+            <i class="mdi mdi-chevron-left me-1"></i>Tuần trước
+        </a>
+        <span class="badge bg-light text-dark border fw-normal px-3 py-2" style="font-size: 0.8rem;">
+            {{ start_of_week|date:"d/m" }} &ndash; {{ end_of_week|date:"d/m/Y" }}
+        </span>
+        <a href="?week_start={{ next_week_start }}" class="btn btn-outline-primary btn-sm px-3">
+            Tuần sau<i class="mdi mdi-chevron-right ms-1"></i>
+        </a>
+    </div>
+</div>
+
+{% if sessions %}
+<div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th class="ps-4" style="width:15%">Ngày</th>
+                    <th style="width:30%">Môn học</th>
+                    <th style="width:20%">Giảng viên</th>
+                    <th class="text-center" style="width:20%">Giờ học</th>
+                    <th class="text-center" style="width:15%">Trạng thái</th>
+                </tr>
             </thead>
             <tbody>
-            {% for classroom in student_classes %}
-                <tr>
+                {% for session in sessions %}
+                <tr {% if session.session_date == today %}class="table-primary"{% endif %}>
+                    <td class="ps-4">
+                        <div class="fw-semibold small">{{ session.day_label }}</div>
+                        <div class="text-muted" style="font-size: 0.75rem;">
+                            {{ session.session_date|date:"d/m/Y" }}
+                        </div>
+                    </td>
+                    <td>
+                        <span class="fw-medium">{{ session.classroom.name }}</span>
+                    </td>
+                    <td class="text-muted small">
+                        {{ session.classroom.id_lecturer.staff_name|default:"—" }}
+                    </td>
+                    <td class="text-center small text-muted">
+                        {{ session.classroom.begin_time|time:"G:i" }}
+                        &ndash;
+                        {{ session.classroom.end_time|time:"G:i" }}
+                        {{ session.classroom.begin_period_code }}
+                    </td>
                     <td class="text-center">
-                        {% if classroom.day_of_week_begin == 7 %}
-                            Chủ Nhật
-                        {% elif classroom.day_of_week_begin == 1 %}
-                            Thứ Hai
-                        {% elif classroom.day_of_week_begin == 2 %}
-                            Thứ Ba
-                        {% elif classroom.day_of_week_begin == 3 %}
-                            Thứ Tư
-                        {% elif classroom.day_of_week_begin == 4 %}
-                            Thứ Năm
-                        {% elif classroom.day_of_week_begin == 5 %}
-                            Thứ Sáu
-                        {% elif classroom.day_of_week_begin == 6 %}
-                            Thứ Bảy
+                        {% if session.status == 2 %}
+                            <span class="badge bg-success">Đã điểm danh</span>
+                        {% elif session.status == 3 %}
+                            <span class="badge bg-warning text-dark">Đi trễ</span>
+                        {% elif session.status == 1 %}
+                            <span class="badge bg-danger">Vắng</span>
+                        {% elif session.status == 0 %}
+                            <span class="badge bg-primary">Hôm nay</span>
+                        {% else %}
+                            <span class="badge bg-secondary">Chưa đến</span>
                         {% endif %}
                     </td>
-                    <td class="text-center">{{ classroom.id_lecturer.staff_name }}</td>
-                    <td>{{ classroom.name }}</td>
-                    <td class="text-center">{{ classroom.begin_time|time:"H:i" }}</td>
-                    <td class="text-center">{{ classroom.end_time|time:"H:i" }}</td>
                 </tr>
-            {% empty %}
-                <tr class="text-center text-danger">
-                    <td colspan="5"><strong>Không có lịch học trong tuần này!</strong>
-                    </td>
-                </tr>
-            {% endfor %}
+                {% endfor %}
             </tbody>
         </table>
     </div>
+</div>
+
+<!-- Legend -->
+<div class="d-flex flex-wrap gap-3 mt-3 ps-1" style="font-size: 0.78rem;">
+    <span><span class="badge bg-success me-1">Đã điểm danh</span>Có mặt đúng giờ</span>
+    <span><span class="badge bg-warning text-dark me-1">Đi trễ</span>Có mặt nhưng trễ</span>
+    <span><span class="badge bg-danger me-1">Vắng</span>Không có mặt</span>
+    <span><span class="badge bg-primary me-1">Hôm nay</span>Buổi hôm nay</span>
+    <span><span class="badge bg-secondary me-1">Chưa đến</span>Buổi tương lai</span>
+</div>
+
+{% else %}
+<div class="card border-0 shadow-sm">
+    <div class="card-body text-center py-5">
+        <i class="mdi mdi-calendar-blank-outline text-muted" style="font-size: 3rem;"></i>
+        <h6 class="mt-3 mb-1 fw-semibold text-muted">Không có lịch học trong tuần này</h6>
+        <p class="small text-muted mb-4">
+            Tuần từ {{ start_of_week|date:"d/m/Y" }} đến {{ end_of_week|date:"d/m/Y" }}
+        </p>
+        <div class="d-flex justify-content-center gap-2">
+            <a href="?week_start={{ previous_week_start }}" class="btn btn-outline-secondary btn-sm">
+                <i class="mdi mdi-chevron-left"></i> Tuần trước
+            </a>
+            <a href="?week_start={{ next_week_start }}" class="btn btn-outline-secondary btn-sm">
+                Tuần sau <i class="mdi mdi-chevron-right"></i>
+            </a>
+        </div>
+    </div>
+</div>
+{% endif %}
 {% endblock %}

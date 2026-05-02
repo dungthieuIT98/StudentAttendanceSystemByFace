@@ -1,8 +1,9 @@
 from datetime import time
 
 from django.db import models
+from django.utils import dateformat
+from django.utils import timezone as dj_tz
 
-from django.db import models
 from django.utils.translation import gettext_lazy as _
 from ckeditor_uploader.fields import RichTextUploadingField
 
@@ -83,12 +84,44 @@ class StudentClassDetails(models.Model):
     id_student = models.ForeignKey(StudentInfo, on_delete=models.CASCADE)
 
 
+def _period_code_from_local_time(t):
+    return 'SA' if t < time(12, 0) else 'CH'
+
+
+def format_clock_sa_ch_from_datetime(dt):
+    """Giờ địa phương dạng 'G:i:s SA|CH' (đồng bộ filter template)."""
+    loc = dj_tz.localtime(dt)
+    return f'{dateformat.format(loc, "G:i:s")} {_period_code_from_local_time(loc.time())}'
+
+
+def format_full_check_in_display(dt):
+    """Ngày + giờ điểm danh: 'd/m/Y G:i:s SA|CH'."""
+    loc = dj_tz.localtime(dt)
+    return (
+        f'{dateformat.format(loc, "d/m/Y")} '
+        f'{dateformat.format(loc, "G:i:s")} '
+        f'{_period_code_from_local_time(loc.time())}'
+    )
+
+
 class Attendance(models.Model):
     id_attendance = models.BigAutoField(primary_key=True)
     check_in_time = models.DateTimeField()
     attendance_status = models.IntegerField()
     id_classroom = models.ForeignKey('Classroom', on_delete=models.SET_NULL, null=True)
     id_student = models.ForeignKey('StudentInfo', on_delete=models.CASCADE)
+
+    @property
+    def check_in_period_code(self):
+        return _period_code_from_local_time(dj_tz.localtime(self.check_in_time).time())
+
+    @property
+    def check_in_clock_sa_ch(self):
+        return format_clock_sa_ch_from_datetime(self.check_in_time)
+
+    @property
+    def check_in_display(self):
+        return format_full_check_in_display(self.check_in_time)
 
 
 class BlogPost(models.Model):

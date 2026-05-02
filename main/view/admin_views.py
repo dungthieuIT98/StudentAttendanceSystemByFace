@@ -419,6 +419,8 @@ def admin_schedule_management_view(request):
                 'end_date': s.end_date,
                 'begin_time': s.begin_time,
                 'end_time': s.end_time,
+                'begin_period_code': s.begin_period_code,
+                'end_period_code': s.end_period_code,
                 'id_lecturer': s.id_lecturer,
                 'days': set([s.day_of_week_begin]),
             }

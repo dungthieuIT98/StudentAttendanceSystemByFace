@@ -39,8 +39,8 @@
                         <td class="text-center">
                             {{ schedule.days_label }}
                         </td>
-                        <td class="text-center">{{ schedule.begin_time|time:"H:i" }}</td>
-                        <td class="text-center">{{ schedule.end_time|time:"H:i" }}</td>
+                        <td class="text-center">{{ schedule.begin_time|time:"G:i" }} {{ schedule.begin_period_code }}</td>
+                        <td class="text-center">{{ schedule.end_time|time:"G:i" }} {{ schedule.end_period_code }}</td>
                         <td class="text-center">
                             {% if schedule.id_lecturer %}
                                 {{ schedule.id_lecturer.staff_name }}

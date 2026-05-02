@@ -1,93 +1,163 @@
 {% extends "student/base_student_dashboard.html" %}
 
 {% block content %}
-    <div class="card">
-        <div class="card-body">
-            <h3 class="card-title mb-0">Danh sách lớp học</h3>
-        </div>
-        <table class="table">
-            <thead>
-            <tr>
-                <th class="text-center" scope="col">Thứ</th>
-                <th scope="col">Môn Học</th>
-                <th class="text-center" scope="col">Ngày bắt đầu</th>
-                <th class="text-center" scope="col">Ngày gian kết thúc</th>
-                <th class="text-center" scope="col">Thao tác</th>
-            </tr>
-            </thead>
-            <tbody>
-            {% for classroom in classrooms %}
-                <tr>
-                    <td class="text-center">
-                        {% if classroom.day_of_week_begin == 7 %}
-                            Chủ Nhật
-                        {% elif classroom.day_of_week_begin == 1 %}
-                            Thứ Hai
-                        {% elif classroom.day_of_week_begin == 2 %}
-                            Thứ Ba
-                        {% elif classroom.day_of_week_begin == 3 %}
-                            Thứ Tư
-                        {% elif classroom.day_of_week_begin == 4 %}
-                            Thứ Năm
-                        {% elif classroom.day_of_week_begin == 5 %}
-                            Thứ Sáu
-                        {% elif classroom.day_of_week_begin == 6 %}
-                            Thứ Bảy
-                        {% endif %}
-                    </td>
-                    <td>{{ classroom.name }}</td>
-                    <td class="text-center">{{ classroom.begin_date|date:"d/m/Y" }}</td>
-                    <td class="text-center">{{ classroom.end_date|date:"d/m/Y" }}</td>
-                    <td class="text-center">
-                        <a href="{% url 'student_attendance_history' classroom.id_classroom %}"
-                           class="btn btn-info btn-sm mdi mdi-information-outline">
-                            <span>Chi tiết</span>
-                        </a>
-                    </td>
-                </tr>
-            {% empty %}
-                <tr class="text-center text-danger">
-                    <td colspan="5"><strong>Lớp học hiện tại đang được cập nhật!</strong>
-                    </td>
-                </tr>
+<!-- Page header -->
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+    <div>
+        <h4 class="fw-bold mb-1">Lịch Sử Điểm Danh</h4>
+        <p class="text-muted small mb-0">Danh sách buổi học theo từng môn — sắp xếp gần nhất trước</p>
+    </div>
+    {% if subject_names %}
+    <div>
+        <select id="subject-filter"
+                class="form-select form-select-sm border-0 shadow-sm"
+                style="min-width: 200px;"
+                onchange="filterSubject(this.value)">
+            <option value="">Tất cả môn học</option>
+            {% for name in subject_names %}
+                <option value="{{ name }}"
+                    {% if subject_filter == name %}selected{% endif %}>
+                    {{ name }}
+                </option>
             {% endfor %}
-            </tbody>
-        </table>
-        <div class="pagination justify-content-center">
-            <ul class="pagination">
-                {% if classrooms.has_previous %}
-                    <li class="page-item">
-                        <a class="page-link" href="?page=1">‹‹</a>
-                    </li>
-                    <li class="page-item">
-                        <a class="page-link" href="?page={{ classrooms.previous_page_number }}">‹</a>
-                    </li>
-                {% endif %}
+        </select>
+    </div>
+    {% endif %}
+</div>
 
-                {% for i in classrooms.paginator.page_range %}
-                    {% if classrooms.number == i %}
-                        <li class="page-item active">
-                            <a class="page-link" href="?page={{ i }}">{{ i }}</a>
-                        </li>
-                    {% elif i > classrooms.number|add:'-3' and i < classrooms.number|add:'3' %}
-                        <li class="page-item">
-                            <a class="page-link" href="?page={{ i }}">{{ i }}</a>
-                        </li>
-                    {% endif %}
-                {% endfor %}
+{% if subjects %}
+{% for subject in subjects %}
+<div class="card border-0 shadow-sm mb-4">
 
-                {% if classrooms.has_next %}
-                    <li class="page-item">
-                        <a class="page-link" href="?page={{ classrooms.next_page_number }}">›</a>
-                    </li>
-                    <li class="page-item">
-                        <a class="page-link" href="?page={{ classrooms.paginator.num_pages }}">››</a>
-                    </li>
-                {% endif %}
-            </ul>
+    <!-- Subject header -->
+    <div class="card-header bg-white border-bottom d-flex align-items-center justify-content-between py-3 px-4">
+        <div class="d-flex align-items-center gap-2">
+            <i class="mdi mdi-book-open-variant text-primary fs-5"></i>
+            <h6 class="fw-bold mb-0">{{ subject.name }}</h6>
         </div>
-        <div class="text-center">
-            <p>Trang {{ classrooms.number }} / {{ classrooms.paginator.num_pages }}</p>
+        <div class="d-flex gap-2 align-items-center">
+            {% with sessions=subject.sessions %}
+            {% comment %}Count statuses for quick summary{% endcomment %}
+            <span class="text-muted small">{{ sessions|length }} buổi</span>
+            {% endwith %}
         </div>
     </div>
+
+    <!-- Session table -->
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th class="ps-4" style="width:18%;">Ngày</th>
+                    <th style="width:14%;">Thứ</th>
+                    <th class="text-center" style="width:22%;">Giờ học</th>
+                    <th class="text-center" style="width:22%;">Phòng / Giảng viên</th>
+                    <th class="text-center" style="width:24%;">Trạng thái</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for session in subject.sessions %}
+                <tr>
+                    <td class="ps-4">
+                        <span class="fw-medium small">
+                            {{ session.session_date|date:"d/m/Y" }}
+                        </span>
+                        {% if session.session_date == today %}
+                            <span class="ms-1 badge bg-primary" style="font-size: 0.65rem;">Hôm nay</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-muted small">{{ session.day_label }}</td>
+                    <td class="text-center small text-muted">
+                        {{ session.classroom.begin_time|time:"G:i" }}
+                        &ndash;
+                        {{ session.classroom.end_time|time:"G:i" }}
+                        {{ session.classroom.begin_period_code }}
+                    </td>
+                    <td class="text-center small text-muted">
+                        {{ session.classroom.id_lecturer.staff_name|default:"—" }}
+                    </td>
+                    <td class="text-center">
+                        {% if session.status == 2 %}
+                            <span class="badge bg-success px-3">
+                                <i class="mdi mdi-check me-1"></i>Đã điểm danh
+                            </span>
+                        {% elif session.status == 3 %}
+                            <span class="badge bg-warning text-dark px-3">
+                                <i class="mdi mdi-clock-alert me-1"></i>Đi trễ
+                            </span>
+                        {% elif session.status == 1 %}
+                            <span class="badge bg-danger px-3">
+                                <i class="mdi mdi-close me-1"></i>Vắng
+                            </span>
+                        {% elif session.status == 0 %}
+                            <span class="badge bg-primary px-3">
+                                <i class="mdi mdi-calendar-today me-1"></i>Chưa điểm danh
+                            </span>
+                        {% else %}
+                            <span class="badge bg-secondary px-3">
+                                <i class="mdi mdi-calendar-clock me-1"></i>Chưa đến
+                            </span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" class="text-center text-muted py-3 small">
+                        Chưa có buổi học nào được tạo.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+</div>
+{% endfor %}
+
+<!-- Legend -->
+<div class="d-flex flex-wrap gap-3 mt-2 ps-1" style="font-size: 0.77rem; color: #6b7280;">
+    <span><span class="badge bg-success me-1">Đã điểm danh</span>Có mặt đúng giờ</span>
+    <span><span class="badge bg-warning text-dark me-1">Đi trễ</span>Có mặt nhưng trễ</span>
+    <span><span class="badge bg-danger me-1">Vắng</span>Không có mặt</span>
+    <span><span class="badge bg-primary me-1">Chưa điểm danh</span>Buổi hôm nay</span>
+    <span><span class="badge bg-secondary me-1">Chưa đến</span>Buổi tương lai</span>
+</div>
+
+{% else %}
+<!-- Empty state -->
+<div class="card border-0 shadow-sm">
+    <div class="card-body text-center py-5">
+        <i class="mdi mdi-history text-muted" style="font-size: 3rem;"></i>
+        <h6 class="mt-3 mb-1 fw-semibold text-muted">Chưa có dữ liệu điểm danh</h6>
+        <p class="small text-muted mb-0">
+            {% if subject_filter %}
+                Không có buổi học nào cho môn "<strong>{{ subject_filter }}</strong>".
+                <a href="{% url 'student_list_classroom' %}" class="ms-1">Xem tất cả</a>
+            {% else %}
+                Bạn chưa được đăng ký vào lớp học nào.
+            {% endif %}
+        </p>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block script %}
+<script>
+function filterSubject(value) {
+    const url = new URL(window.location.href);
+    if (value) {
+        url.searchParams.set('subject', value);
+    } else {
+        url.searchParams.delete('subject');
+    }
+    // Use SPA navigation if available, otherwise fall back to full load
+    if (typeof navigateTo === 'function') {
+        navigateTo(url.pathname + url.search);
+    } else {
+        window.location.href = url.toString();
+    }
+}
+</script>
 {% endblock %}

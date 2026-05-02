@@ -19,7 +19,7 @@
                     <tr>
                         <td class="text-center">{{ attendance.id_student.id_student }}</td>
                         <td>{{ attendance.id_student.student_name }}</td>
-                        <td class="text-center">{{ attendance.check_in_time|date:"d/m/Y H:i:s" }}</td>
+                        <td class="text-center">{{ attendance.check_in_display }}</td>
                         <td class="text-center">
                             {% if attendance.attendance_status == 1 %}
                                 <span class="text-center badge bg-danger">Vắng</span>

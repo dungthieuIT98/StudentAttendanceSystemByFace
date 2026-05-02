@@ -36,7 +36,7 @@
                             <td class="text-center">{{ student.id_student.birthday|date:"d/m/Y" }}</td>
                             <td class="text-center">
                                 {% if student.today_attendance %}
-                                    {{ student.today_attendance.check_in_time|date:"d/m/Y H:i:s" }}
+                                    {{ student.today_attendance.check_in_display }}
                                 {% else %}
                                     <span class="text-muted">Chưa điểm danh</span>
                                 {% endif %}

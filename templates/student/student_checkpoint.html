@@ -1,111 +1,144 @@
 {% extends "student/base_student_dashboard.html" %}
 
 {% block content %}
-    <div class="card">
-        <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center">
-                <h3 class="card-title mb-0">Danh sách lớp học</h3>
-                <strong class="current-date">{{ current_date|date:"d/m/Y" }}</strong>
+<div class="mb-4">
+    <h4 class="fw-bold mb-1">Điểm Quá Trình</h4>
+    <p class="text-muted small mb-0">Tổng hợp chuyên cần theo từng môn học</p>
+</div>
+
+{% if subjects %}
+
+{% for subject in subjects %}
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body pb-3">
+
+        <!-- Subject header row -->
+        <div class="d-flex align-items-start justify-content-between mb-3">
+            <div>
+                <h6 class="fw-bold mb-1">{{ subject.name }}</h6>
+                <div class="text-muted" style="font-size: 0.78rem;">
+                    <i class="mdi mdi-calendar-range me-1"></i>
+                    {{ subject.begin_date|date:"d/m/Y" }} &ndash; {{ subject.end_date|date:"d/m/Y" }}
+                </div>
+            </div>
+            {% if subject.is_at_risk %}
+                <span class="badge bg-danger px-3 py-2">
+                    <i class="mdi mdi-alert-circle me-1"></i>Cảnh báo vắng
+                </span>
+            {% elif subject.attendance_rate >= 80 %}
+                <span class="badge bg-success px-3 py-2">
+                    <i class="mdi mdi-check-circle me-1"></i>Bình thường
+                </span>
+            {% else %}
+                <span class="badge bg-warning text-dark px-3 py-2">
+                    <i class="mdi mdi-alert me-1"></i>Chú ý
+                </span>
+            {% endif %}
+        </div>
+
+        <!-- Stats grid -->
+        <div class="row g-2 mb-3">
+            <div class="col-6 col-sm-3">
+                <div class="rounded-3 text-center p-2" style="background:#f1f5f9;">
+                    <div class="fw-bold fs-5 text-dark">{{ subject.total_sessions }}</div>
+                    <div class="small text-muted">Tổng buổi</div>
+                </div>
+            </div>
+            <div class="col-6 col-sm-3">
+                <div class="rounded-3 text-center p-2" style="background:#dcfce7;">
+                    <div class="fw-bold fs-5 text-success">{{ subject.attended }}</div>
+                    <div class="small text-muted">Đúng giờ</div>
+                </div>
+            </div>
+            <div class="col-6 col-sm-3">
+                <div class="rounded-3 text-center p-2" style="background:#fef9c3;">
+                    <div class="fw-bold fs-5 text-warning">{{ subject.late }}</div>
+                    <div class="small text-muted">Đi trễ</div>
+                </div>
+            </div>
+            <div class="col-6 col-sm-3">
+                <div class="rounded-3 text-center p-2" style="background:#fee2e2;">
+                    <div class="fw-bold fs-5 text-danger">{{ subject.absent }}</div>
+                    <div class="small text-muted">Vắng</div>
+                </div>
             </div>
         </div>
-        <table class="table">
-            <thead>
-            <tr>
-                <th class="text-center" scope="col">Thứ</th>
-                <th scope="col">Môn Học</th>
-                <th class="text-center" scope="col">Ngày bắt đầu</th>
-                <th class="text-center" scope="col">Ngày gian kết thúc</th>
-                <th class="text-center" scope="col">Số buổi đi học / Số buổi trễ / Số buổi vắng</th>
-                <th class="text-center" scope="col">Điểm chuyên cần hiện tại</th>
-                <th class="text-center" scope="col">Trạng thái</th>
-            </tr>
-            </thead>
-            <tbody>
-            {% for score in attendance_scores %}
-                <tr>
-                    <td class="text-center">
-                        {% for day in score.days %}
-                            {% if day == 7 %}
-                                Chủ Nhật
-                            {% elif day == 1 %}
-                                Thứ Hai
-                            {% elif day == 2 %}
-                                Thứ Ba
-                            {% elif day == 3 %}
-                                Thứ Tư
-                            {% elif day == 4 %}
-                                Thứ Năm
-                            {% elif day == 5 %}
-                                Thứ Sáu
-                            {% elif day == 6 %}
-                                Thứ Bảy
-                            {% endif %}
-                            {% if not forloop.last %}, {% endif %}
-                        {% endfor %}
-                    </td>
-                    <td>{{ score.name }}</td>
-                    <td class="text-center">{{ score.begin_date|date:"d/m/Y" }}</td>
-                    <td class="text-center">{{ score.end_date|date:"d/m/Y" }}</td>
-                    <td class="text-center">
-                        {{ score.total_attendance_present }}
-                        / {{ score.late_count }}
-                        / {{ score.absent_count }}
-                    </td>
-                    <td class="text-center">
-                        {{ score.total_attendance_percentage }}
-                    </td>
-                    <td class="text-center">
-                        {% if score.total_number_attendance != 9 %}
-                            <span class="text-center badge bg-warning">Đang trong quá trình học</span>
-                        {% elif score.absent_count > 2 %}
-                            <span class="text-center badge bg-danger">Nghỉ quá quy định</span>
-                        {% else %}
-                            <span class="text-center badge bg-success">Bình thường</span>
-                        {% endif %}
-                    </td>
-                </tr>
-            {% empty %}
-                <tr class="text-center text-danger">
-                    <td colspan="7"><strong>Lớp học hiện tại đang được cập nhật!</strong></td>
-                </tr>
-            {% endfor %}
-            </tbody>
-        </table>
-        <div class="pagination justify-content-center">
-            <ul class="pagination">
-                {% if attendance_scores.has_previous %}
-                    <li class="page-item">
-                        <a class="page-link" href="?page=1">‹‹</a>
-                    </li>
-                    <li class="page-item">
-                        <a class="page-link" href="?page={{ attendance_scores.previous_page_number }}">‹</a>
-                    </li>
-                {% endif %}
 
-                {% for i in attendance_scores.paginator.page_range %}
-                    {% if attendance_scores.number == i %}
-                        <li class="page-item active">
-                            <a class="page-link" href="?page={{ i }}">{{ i }}</a>
-                        </li>
-                    {% elif i > attendance_scores.number|add:'-3' and i < attendance_scores.number|add:'3' %}
-                        <li class="page-item">
-                            <a class="page-link" href="?page={{ i }}">{{ i }}</a>
-                        </li>
+        <!-- Progress bar -->
+        <div class="d-flex align-items-center gap-3">
+            <div class="flex-grow-1">
+                <div class="progress" style="height: 8px; border-radius: 99px;">
+                    {% if subject.attendance_rate >= 80 %}
+                        <div class="progress-bar bg-success"
+                             role="progressbar"
+                             style="width: {{ subject.attendance_rate }}%;"
+                             aria-valuenow="{{ subject.attendance_rate }}"
+                             aria-valuemin="0" aria-valuemax="100"></div>
+                    {% elif subject.attendance_rate >= 60 %}
+                        <div class="progress-bar bg-warning"
+                             role="progressbar"
+                             style="width: {{ subject.attendance_rate }}%;"
+                             aria-valuenow="{{ subject.attendance_rate }}"
+                             aria-valuemin="0" aria-valuemax="100"></div>
+                    {% else %}
+                        <div class="progress-bar bg-danger"
+                             role="progressbar"
+                             style="width: {{ subject.attendance_rate }}%;"
+                             aria-valuenow="{{ subject.attendance_rate }}"
+                             aria-valuemin="0" aria-valuemax="100"></div>
                     {% endif %}
-                {% endfor %}
+                </div>
+            </div>
+            <div class="fw-semibold small text-end" style="min-width: 48px;">
+                {{ subject.attendance_rate }}%
+            </div>
+        </div>
+        <div class="text-muted mt-1" style="font-size: 0.73rem;">
+            {{ subject.total_present }} / {{ subject.total_sessions }} buổi có mặt
+        </div>
 
-                {% if attendance_scores.has_next %}
-                    <li class="page-item">
-                        <a class="page-link" href="?page={{ attendance_scores.next_page_number }}">›</a>
-                    </li>
-                    <li class="page-item">
-                        <a class="page-link" href="?page={{ attendance_scores.paginator.num_pages }}">››</a>
-                    </li>
-                {% endif %}
-            </ul>
-        </div>
-        <div class="text-center">
-            <p>Trang {{ attendance_scores.number }} / {{ attendance_scores.paginator.num_pages }}</p>
-        </div>
     </div>
+</div>
+{% endfor %}
+
+<!-- Pagination -->
+{% if subjects.has_other_pages %}
+<nav aria-label="Phân trang điểm quá trình">
+    <ul class="pagination justify-content-center mt-4 gap-1">
+        {% if subjects.has_previous %}
+            <li class="page-item">
+                <a class="page-link rounded-2" href="?page={{ subjects.previous_page_number }}">‹</a>
+            </li>
+        {% endif %}
+        {% for i in subjects.paginator.page_range %}
+            {% if subjects.number == i %}
+                <li class="page-item active">
+                    <span class="page-link rounded-2">{{ i }}</span>
+                </li>
+            {% elif i > subjects.number|add:"-3" and i < subjects.number|add:"3" %}
+                <li class="page-item">
+                    <a class="page-link rounded-2" href="?page={{ i }}">{{ i }}</a>
+                </li>
+            {% endif %}
+        {% endfor %}
+        {% if subjects.has_next %}
+            <li class="page-item">
+                <a class="page-link rounded-2" href="?page={{ subjects.next_page_number }}">›</a>
+            </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+
+{% else %}
+<!-- Empty state -->
+<div class="card border-0 shadow-sm">
+    <div class="card-body text-center py-5">
+        <i class="mdi mdi-chart-bar text-muted" style="font-size: 3rem;"></i>
+        <h6 class="mt-3 mb-1 fw-semibold text-muted">Chưa có dữ liệu điểm quá trình</h6>
+        <p class="small text-muted mb-0">Bạn chưa được đăng ký vào môn học nào.</p>
+    </div>
+</div>
+{% endif %}
+
 {% endblock %}

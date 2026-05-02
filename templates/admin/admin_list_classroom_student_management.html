@@ -56,8 +56,8 @@
                         </td>
                         <td class="text-center">{{ classroom.begin_date|date:"d/m/Y" }}</td>
                         <td class="text-center">{{ classroom.end_date|date:"d/m/Y" }}</td>
-                        <td class="text-center">{{ classroom.begin_time|time:"H:i" }}</td>
-                        <td class="text-center">{{ classroom.end_time|time:"H:i" }}</td>
+                        <td class="text-center">{{ classroom.begin_time|time:"G:i" }} {{ classroom.begin_period_code }}</td>
+                        <td class="text-center">{{ classroom.end_time|time:"G:i" }} {{ classroom.end_period_code }}</td>
                         <td class="text-center">
                             <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2 rounded-pill">
                                 {{ classroom.student_count }}

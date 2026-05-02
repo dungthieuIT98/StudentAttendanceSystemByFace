@@ -36,8 +36,8 @@
                         {% endif %}
                     </td>
                     <td>{{ classroom.name }}</td>
-                    <td class="text-center">{{ classroom.begin_time|time:"H:i" }}</td>
-                    <td class="text-center">{{ classroom.end_time|time:"H:i" }}</td>
+                    <td class="text-center">{{ classroom.begin_time|time:"G:i" }} {{ classroom.begin_period_code }}</td>
+                    <td class="text-center">{{ classroom.end_time|time:"G:i" }} {{ classroom.end_period_code }}</td>
                     <td class="text-center">
                         <a href="{% url 'lecturer_attendance_history' classroom.id_classroom %}"
                            class="btn btn-info btn-sm mdi mdi-account-edit">Xem danh sách</a>

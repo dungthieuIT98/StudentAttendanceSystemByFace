@@ -2,6 +2,8 @@ import os
 import time
 from datetime import date, timedelta
 
+import cv2
+import numpy as np
 from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.hashers import check_password, make_password
@@ -12,25 +14,18 @@ from django.http import StreamingHttpResponse
 from django.shortcuts import redirect
 from django.shortcuts import render, get_object_or_404
 from django.utils import timezone
-from django.views.decorators import gzip
 from django.views.decorators.http import require_GET
 
 from main.decorators import lecturer_required
 from main.models import StaffInfo, StudentClassDetails
-from main.src.anti_spoof_predict import AntiSpoofPredict
-from main.src.generate_patches import CropImage
 from main.src.utility import parse_model_name
 from main.view.reg import *
-from main.models import BlogPost
+from main.models import BlogPost, format_clock_sa_ch_from_datetime
 
-model_test = AntiSpoofPredict(0)
-image_cropper = CropImage()
-
-model_dir = "main/resources/anti_spoof_models"
-device_id = 0
-
-for model_name in os.listdir(model_dir):
-    h_input, w_input, model_type, scale = parse_model_name(model_name)
+# Do NOT instantiate AntiSpoofPredict here.
+# The ModelRegistry singleton (loaded by reg.py → model_registry.py) already
+# holds a single RetinaFace DNN net and all anti-spoof model weights.
+# Creating a second AntiSpoofPredict(0) here would double memory usage.
 
 
 @lecturer_required
@@ -228,72 +223,20 @@ def lecturer_mark_attendance(request, classroom_id):
     return render(request, 'lecturer/lecturer_mask_attendance.html', context)
 
 
-def generate_frames(model_dir, device_id):
-    model_test = AntiSpoofPredict(device_id)
-    image_cropper = CropImage()
-    capture = cv2.VideoCapture(1)  # Change this to the desired camera index.
-
-    while True:
-        ret, frame = capture.read()
-        if not ret:
-            break
-
-        image_bbox = model_test.get_bbox(frame)
-
-        prediction = np.zeros((1, 3))
-        test_speed = 0
-        for model_name in os.listdir(model_dir):
-            h_input, w_input, model_type, scale = parse_model_name(model_name)
-            param = {
-                "org_img": frame,
-                "bbox": image_bbox,
-                "scale": scale,
-                "out_w": w_input,
-                "out_h": h_input,
-                "crop": True,
-            }
-            if scale is None:
-                param["crop"] = False
-            img = image_cropper.crop(**param)
-            start = time.time()
-            prediction += model_test.predict(img, os.path.join(model_dir, model_name))
-            test_speed += time.time() - start
-
-        label = np.argmax(prediction)
-        value = prediction[0][label] / 2
-        if label == 1:
-            result_text = "RealFace Score: {:.2f}".format(value)
-            color = (255, 0, 0)
-        else:
-            result_text = "FakeFace Score: {:.2f}".format(value)
-            color = (0, 0, 255)
-
-        cv2.rectangle(
-            frame,
-            (image_bbox[0], image_bbox[1] - 50),
-            (image_bbox[0] + image_bbox[2], image_bbox[1] + image_bbox[3]),
-            color, 2)
-
-        cv2.putText(
-            frame,
-            result_text,
-            (image_bbox[0], image_bbox[1]),
-            cv2.FONT_HERSHEY_COMPLEX, 1.5 * frame.shape[0] / 1024, color)
-
-        ret, buffer = cv2.imencode('.jpg', frame)
-        if ret:
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n\r\n')
-
-    capture.release()
-    cv2.destroyAllWindows()
-
-
-@gzip.gzip_page
 def live_video_feed2(request, classroom_id):
-    print(classroom_id)
-    return StreamingHttpResponse(main(classroom_id),
-                                 content_type="multipart/x-mixed-replace; boundary=frame")
+    """
+    MJPEG stream for face recognition attendance.
+
+    - gzip removed: JPEG frames are already compressed; gzip adds CPU overhead
+      with essentially 0% size reduction and extra latency.
+    - generate_frames() removed: it created a new AntiSpoofPredict per call
+      (loading the DNN net from disk every time) and was not wired to any URL.
+      All inference now goes through ModelRegistry in reg.main().
+    """
+    return StreamingHttpResponse(
+        main(classroom_id),
+        content_type="multipart/x-mixed-replace; boundary=frame",
+    )
 
 
 @lecturer_required
@@ -352,7 +295,8 @@ def lecturer_live_attendance_today(request, classroom_id):
             "student_id": a.id_student.id_student,
             "student_name": a.id_student.student_name,
             "attendance_status": a.attendance_status,
-            "check_in_time": a.check_in_time.strftime("%H:%M:%S"),
+            "check_in_time": format_clock_sa_ch_from_datetime(a.check_in_time),
+            "_sort_ts": a.check_in_time,
         }
 
     # Merge cache (pending, chưa commit DB) → hiển thị trước
@@ -360,16 +304,20 @@ def lecturer_live_attendance_today(request, classroom_id):
     for p in pending_list:
         sid = p["student_id"]
         if sid not in items_dict:  # Chưa có từ DB → dùng cache
+            ts = p["timestamp"]
             items_dict[sid] = {
                 "id_attendance": 0,
                 "student_id": sid,
                 "student_name": p["student_name"],
                 "attendance_status": p["attendance_status"],
-                "check_in_time": p["timestamp"].strftime("%H:%M:%S"),
+                "check_in_time": format_clock_sa_ch_from_datetime(ts),
+                "_sort_ts": ts,
             }
 
     items = list(items_dict.values())
-    items.sort(key=lambda x: x["check_in_time"], reverse=True)
+    items.sort(key=lambda x: x["_sort_ts"], reverse=True)
+    for it in items:
+        it.pop("_sort_ts", None)
 
     return JsonResponse({"count": len(items), "items": items})
 
