@@ -2,6 +2,7 @@
 Django==5.0a1
 asgiref==3.7.2
 sqlparse==0.4.4
+gunicorn==21.2.0
 
 # ── CKEditor (rich-text) ───────────────────────────────────────
 django-ckeditor==6.7.0

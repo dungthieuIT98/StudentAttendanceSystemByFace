@@ -96,4 +96,19 @@ __pycache__/
 local_settings.py
 
 .env
+.env.*
+!.env.example
 db.sqlite3
+
+### Docker ###
+*.sql
+backup_*.sql
+
+### Static and Media ###
+staticfiles/
+media/
+
+### Virtual Environment ###
+.venv/
+venv/
+ENV/

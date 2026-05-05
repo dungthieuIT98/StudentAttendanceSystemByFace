@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   db:
     image: postgres:16-alpine
@@ -7,32 +9,27 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-face_attendance}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-    ports:
-      - "${POSTGRES_PORT:-15432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
 
   web:
     build: .
     container_name: face_attendance_web
     restart: unless-stopped
-    profiles: ["full"]
-    env_file: .env
+    env_file:
+      - .env
     environment:
       POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
     ports:
-      - "8000:8000"
-    depends_on:
-      db:
-        condition: service_healthy
+      - "${WEB_PORT:-8000}:8000"
     volumes:
-      - .:/app
-      - media_data:/app/media
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+    depends_on:
+      - db
 
   pgadmin:
     image: dpage/pgadmin4:8
@@ -44,9 +41,13 @@ services:
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
     ports:
       - "${PGADMIN_PORT:-5050}:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
     depends_on:
       - db
 
 volumes:
   postgres_data:
-  media_data:
+  static_volume:
+  media_volume:
+  pgadmin_data:

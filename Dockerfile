@@ -6,8 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# System libraries needed by psycopg2, OpenCV-headless, TF, etc.
-# libgl1-mesa-glx was removed in Debian trixie; opencv-headless does not need OpenGL
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libpq-dev \
         libglib2.0-0 \
@@ -16,16 +15,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-# PyTorch CPU wheels are fetched from the official index to avoid the huge CUDA bundle
 COPY requirements.txt .
-RUN pip install --no-cache-dir \
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir \
         --extra-index-url https://download.pytorch.org/whl/cpu \
         -r requirements.txt
 
-# Copy project source
+# Copy project files
 COPY . .
+
+# Create necessary directories
+RUN mkdir -p staticfiles media
 
 EXPOSE 8000
 
-# Collect static, run migrations, then start the dev server
-CMD ["sh", "-c", "python manage.py collectstatic --noinput && python manage.py migrate && python manage.py runserver 0.0.0.0:8000"]
+# Run entrypoint script
+ENTRYPOINT ["sh", "-c", "\
+    echo 'Waiting for database...' && \
+    python -c 'import time; time.sleep(5)' && \
+    echo 'Running migrations...' && \
+    python manage.py migrate --noinput && \
+    echo 'Collecting static files...' && \
+    python manage.py collectstatic --noinput --clear && \
+    echo 'Creating superuser if not exists...' && \
+    python -c \"from django.contrib.auth import get_user_model; User = get_user_model(); User.objects.create_superuser('admin', 'admin@example.com', 'admin123') if not User.objects.filter(username='admin').exists() else print('Admin already exists')\" && \
+    echo 'Starting server...' && \
+    gunicorn FaceByAttendance.wsgi:application --bind 0.0.0.0:8000 --workers 4"]

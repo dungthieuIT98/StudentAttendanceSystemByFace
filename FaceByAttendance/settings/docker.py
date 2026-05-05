@@ -1,5 +1,5 @@
 from .base import *  # noqa: F403
-from .base import _env  # _env starts with _ so not exported by *
+from .base import _env, BASE_DIR  # _env starts with _ so not exported by *
 
 
 DEBUG = True
@@ -15,4 +15,16 @@ DATABASES = {
         "PORT": int(_env("POSTGRES_PORT", "5432")),  # noqa: F405
     }
 }
+
+# Static files configuration for Docker
+STATIC_ROOT = BASE_DIR / "staticfiles"  # noqa: F405
+MEDIA_ROOT = BASE_DIR / "media"  # noqa: F405
+
+# Security settings (commented out for development, uncomment for production)
+# SECURE_SSL_REDIRECT = True
+# SESSION_COOKIE_SECURE = True
+# CSRF_COOKIE_SECURE = True
+# SECURE_BROWSER_XSS_FILTER = True
+# SECURE_CONTENT_TYPE_NOSNIFF = True
+# X_FRAME_OPTIONS = 'DENY'
 
