@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.\\run-local.ps1)",
+      "Bash(python *)",
+      "Bash(.\\.venv\\scripts\\activate.ps1)",
+      "Bash(.\\.venv\\scripts\\python.exe *)"
+    ]
+  },
+  "$version": 3
+}
