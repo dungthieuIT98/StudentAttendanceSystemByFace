@@ -96,30 +96,33 @@ class ModelRegistry:
         classifier_pkl: str = "main/Models/facemodel.pkl",
     ) -> None:
         logger.info("[Registry] Loading all AI models …")
+        self._load_detector(detector_prototxt, detector_caffemodel)
+        self._load_antispoof_models(antispoof_dir)
+        self._load_facenet(facenet_pb)
+        self._load_classifier(classifier_pkl)
+        self._ready = True
+        logger.info("[Registry] All models ready  device=%s", self.antispoof_device)
 
-        # 1. RetinaFace — single DNN net for the whole process
-        self.detector = cv2.dnn.readNetFromCaffe(detector_prototxt, detector_caffemodel)
+    def _load_detector(self, prototxt: str, caffemodel: str) -> None:
+        self.detector = cv2.dnn.readNetFromCaffe(prototxt, caffemodel)
         logger.info("[Registry] RetinaFace DNN loaded")
 
-        # 2. Anti-spoof — ALL .pth files pre-loaded into dict (no disk I/O at runtime)
+    def _load_antispoof_models(self, antispoof_dir: str) -> None:
         for fname in sorted(os.listdir(antispoof_dir)):
             if not fname.endswith(".pth"):
                 continue
             fpath = os.path.join(antispoof_dir, fname)
             h, w, model_type, scale = parse_model_name(fname)
-            kernel = get_kernel(h, w)
-            m = _MODEL_MAP[model_type](conv6_kernel=kernel).to(self.antispoof_device)
+            model = _MODEL_MAP[model_type](conv6_kernel=get_kernel(h, w)).to(self.antispoof_device)
             state = torch.load(fpath, map_location=self.antispoof_device)
             if next(iter(state)).startswith("module."):
                 state = OrderedDict((k[7:], v) for k, v in state.items())
-            m.load_state_dict(state)
-            m.eval()
-            self.antispoof_models[fpath] = (m, h, w, scale)
-            logger.info(
-                "[Registry] Anti-spoof loaded: %s  device=%s", fname, self.antispoof_device
-            )
+            model.load_state_dict(state)
+            model.eval()
+            self.antispoof_models[fpath] = (model, h, w, scale)
+            logger.info("[Registry] Anti-spoof loaded: %s  device=%s", fname, self.antispoof_device)
 
-        # 3. FaceNet — isolated tf.Graph so concurrent training jobs don't conflict
+    def _load_facenet(self, facenet_pb: str) -> None:
         self.facenet_graph = tf.Graph()
         with self.facenet_graph.as_default():
             facenet.load_model(facenet_pb)
@@ -129,13 +132,10 @@ class ModelRegistry:
         self.facenet_sess = tf.compat.v1.Session(graph=self.facenet_graph)
         logger.info("[Registry] FaceNet loaded  graph=%s", id(self.facenet_graph))
 
-        # 4. Classifier
+    def _load_classifier(self, classifier_pkl: str) -> None:
         with open(classifier_pkl, "rb") as f:
             self.classifier, self.class_names = pickle.load(f)
         logger.info("[Registry] Classifier loaded — %d classes", len(self.class_names))
-
-        self._ready = True
-        logger.info("[Registry] All models ready  device=%s", self.antispoof_device)
 
     # ------------------------------------------------------------------
     # Inference helpers — called from the hot loop in reg.py

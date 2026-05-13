@@ -221,6 +221,22 @@
             });
         }
 
+        /**
+         * innerHTML injection does not execute <script> tags. After SPA navigation,
+         * page-specific logic (pollers, MJPEG handlers) must be re-run explicitly.
+         */
+        function executeScriptsInContainer(container) {
+            if (!container) return;
+            container.querySelectorAll('script').forEach((oldScript) => {
+                const s = document.createElement('script');
+                for (const attr of oldScript.attributes) {
+                    s.setAttribute(attr.name, attr.value);
+                }
+                s.textContent = oldScript.textContent;
+                oldScript.replaceWith(s);
+            });
+        }
+
         function reinitializeComponents() {
             // Re-initialize jQuery datepickers and other UI components after content update
             if (typeof $ !== 'undefined' && typeof $.fn.datepicker !== 'undefined') {
@@ -254,7 +270,9 @@
             .then(html => {
                 hideLoading();
                 const mainContentEl = document.getElementById('main-content');
+                document.dispatchEvent(new CustomEvent('spa:before-content-update'));
                 mainContentEl.innerHTML = html.trim();
+                executeScriptsInContainer(mainContentEl);
                 history.pushState({url: url}, document.title || '', url);
                 updateActiveSidebar();
                 reinitializeComponents();

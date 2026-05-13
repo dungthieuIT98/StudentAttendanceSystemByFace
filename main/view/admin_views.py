@@ -739,9 +739,21 @@ def admin_list_student_in_classroom_view(request, classroom_id):
     
     if group_key:
         classroom_ids = list(Classroom.objects.filter(group_key=group_key).values_list('id_classroom', flat=True))
-        students_in_class = StudentClassDetails.objects.filter(
-            id_classroom_id__in=classroom_ids
-        ).select_related('id_student').distinct('id_student_id').order_by('id_student_id')
+        # SQLite does not support DISTINCT ON, so dedupe in Python after ordering.
+        students_in_class = list(
+            StudentClassDetails.objects.filter(
+                id_classroom_id__in=classroom_ids
+            ).select_related('id_student').order_by('id_student_id', 'id_classroom_id')
+        )
+        unique_students_in_class = []
+        seen_student_ids = set()
+        for student_class_detail in students_in_class:
+            student_id = student_class_detail.id_student_id
+            if student_id in seen_student_ids:
+                continue
+            seen_student_ids.add(student_id)
+            unique_students_in_class.append(student_class_detail)
+        students_in_class = unique_students_in_class
         
         available_students = StudentInfo.objects.exclude(
             studentclassdetails__id_classroom_id__in=classroom_ids

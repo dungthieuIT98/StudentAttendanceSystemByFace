@@ -12,7 +12,7 @@
 # furnished to do so, subject to the following conditions:
 # 
 # The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.p
+# copies or substantial portions of the Software.
 # 
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -177,6 +177,15 @@ def _add_loss_summaries(total_loss):
     return loss_averages_op
 
 
+_OPTIMIZER_BUILDERS = {
+    'ADAGRAD': lambda lr: tf.train.AdagradOptimizer(lr),
+    'ADADELTA': lambda lr: tf.train.AdadeltaOptimizer(lr, rho=0.9, epsilon=1e-6),
+    'ADAM': lambda lr: tf.train.AdamOptimizer(lr, beta1=0.9, beta2=0.999, epsilon=0.1),
+    'RMSPROP': lambda lr: tf.train.RMSPropOptimizer(lr, decay=0.9, momentum=0.9, epsilon=1.0),
+    'MOM': lambda lr: tf.train.MomentumOptimizer(lr, 0.9, use_nesterov=True),
+}
+
+
 def train(total_loss, global_step, optimizer, learning_rate, moving_average_decay, update_gradient_vars,
           log_histograms=True):
     # Generate moving averages of all losses and associated summaries.
@@ -184,18 +193,10 @@ def train(total_loss, global_step, optimizer, learning_rate, moving_average_deca
 
     # Compute gradients.
     with tf.control_dependencies([loss_averages_op]):
-        if optimizer == 'ADAGRAD':
-            opt = tf.train.AdagradOptimizer(learning_rate)
-        elif optimizer == 'ADADELTA':
-            opt = tf.train.AdadeltaOptimizer(learning_rate, rho=0.9, epsilon=1e-6)
-        elif optimizer == 'ADAM':
-            opt = tf.train.AdamOptimizer(learning_rate, beta1=0.9, beta2=0.999, epsilon=0.1)
-        elif optimizer == 'RMSPROP':
-            opt = tf.train.RMSPropOptimizer(learning_rate, decay=0.9, momentum=0.9, epsilon=1.0)
-        elif optimizer == 'MOM':
-            opt = tf.train.MomentumOptimizer(learning_rate, 0.9, use_nesterov=True)
-        else:
-            raise ValueError('Invalid optimization algorithm')
+        try:
+            opt = _OPTIMIZER_BUILDERS[optimizer](learning_rate)
+        except KeyError as exc:
+            raise ValueError('Invalid optimization algorithm') from exc
 
         grads = opt.compute_gradients(total_loss, update_gradient_vars)
 

@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import cv2
 import numpy as np
 from django.db import transaction
+from django.utils import timezone
 from main.src.generate_patches import CropImage
 from main import facenet
 from main.models import Classroom, Attendance, StudentInfo, StudentClassDetails
@@ -35,14 +36,14 @@ FRAME_SKIP = 2
 # ---------------------------------------------------------------------------
 _PENDING_ATTENDANCE_CACHE = {}
 _CACHE_LOCK = threading.Lock()
-
+PENDING_ATTENDANCE_TTL_SECONDS = 300
 
 def add_pending_attendance(classroom_id, student_id, student_name, status):
     """Thêm vào cache ngay khi nhận diện xong, trước khi ghi DB."""
     with _CACHE_LOCK:
         key = (classroom_id, student_id)
         _PENDING_ATTENDANCE_CACHE[key] = {
-            "timestamp": datetime.now(),
+            "timestamp": timezone.now(),
             "student_id": student_id,
             "student_name": student_name,
             "attendance_status": status,
@@ -52,8 +53,7 @@ def add_pending_attendance(classroom_id, student_id, student_name, status):
 
 def get_pending_attendance_for_classroom(classroom_id):
     """Lấy danh sách pending từ cache (chưa expire)."""
-    now = datetime.now()
-    TTL_SECONDS = 10
+    now = timezone.now()
     with _CACHE_LOCK:
         result = []
         expired_keys = []
@@ -62,7 +62,7 @@ def get_pending_attendance_for_classroom(classroom_id):
             if cid != classroom_id:
                 continue
             age = (now - val["timestamp"]).total_seconds()
-            if age > TTL_SECONDS:
+            if age > PENDING_ATTENDANCE_TTL_SECONDS:
                 expired_keys.append(key)
                 continue
             result.append(val)
@@ -71,21 +71,61 @@ def get_pending_attendance_for_classroom(classroom_id):
             del _PENDING_ATTENDANCE_CACHE[k]
     return result
 
-# ---------------------------------------------------------------------------
-# Mapping: pkl class_names (folder names used during training)
-#          → actual id_student values stored in PostgreSQL.
-#
-# Root cause of StudentInfo.DoesNotExist errors:
-#   Training folders were named "2","3","4","12" (no leading zero),
-#   but DB stores student IDs as "02","03","04".
-#   Add/update this dict whenever the model is retrained.
-# ---------------------------------------------------------------------------
-PKL_TO_DB_STUDENT_ID: dict[str, str] = {
-    "2":  "02",
-    "3":  "03",
-    "4":  "04",
-    "12": "12",   # no leading-zero counterpart in DB — keep as-is
-}
+
+def clear_pending_attendance_for_classroom(classroom_id):
+    """Xóa toàn bộ cache pending của một lớp sau khi hoàn tất lưu."""
+    with _CACHE_LOCK:
+        keys_to_delete = [
+            key for key in _PENDING_ATTENDANCE_CACHE.keys()
+            if key[0] == classroom_id
+        ]
+        for key in keys_to_delete:
+            del _PENDING_ATTENDANCE_CACHE[key]
+    logger.debug(
+        "[CACHE] Cleared pending attendance | classroom_id=%s | removed=%d",
+        classroom_id,
+        len(keys_to_delete),
+    )
+
+def _student_id_candidates(student_id):
+    """
+    Return possible StudentInfo.primary_key values for one recognized label.
+
+    Some environments store IDs as plain numbers ("2"), while others store
+    zero-padded values ("02"). We try the exact label first, then common
+    normalized variants, so attendance still saves when the dataset format
+    differs from the active database.
+    """
+    raw = str(student_id).strip()
+    candidates = []
+
+    def add_candidate(value):
+        if value and value not in candidates:
+            candidates.append(value)
+
+    add_candidate(raw)
+
+    if raw.isdigit():
+        add_candidate(raw.lstrip("0") or "0")
+        add_candidate(raw.zfill(max(2, len(raw))))
+
+    return candidates
+
+
+def _resolve_student_id(student_id):
+    candidates = _student_id_candidates(student_id)
+    student = StudentInfo.objects.filter(id_student__in=candidates).first()
+    if student is not None:
+        return student.id_student
+    return candidates[0] if candidates else str(student_id).strip()
+
+
+def _display_name_for_student_id(student_id):
+    candidates = _student_id_candidates(student_id)
+    student = StudentInfo.objects.filter(id_student__in=candidates).first()
+    if student is not None:
+        return student.student_name
+    return str(student_id)
 
 # Minimum confidence to accept a recognition result
 CONFIDENCE_THRESHOLD = 0.8
@@ -95,6 +135,38 @@ STABLE_FRAME_REQUIREMENT = 10
 
 # How many minutes must pass before the same student can be saved again
 DUPLICATE_WINDOW_MINUTES = 5
+
+
+def _attendance_status_for_classroom(classroom, ts):
+    elapsed_seconds = (
+        datetime.combine(ts.date(), ts.time()) - datetime.combine(ts.date(), classroom.begin_time)
+    ).total_seconds()
+    return Attendance.LATE if elapsed_seconds > 900 else Attendance.PRESENT
+
+
+def _seed_absent_records(classroom, ts):
+    enrolled_details = StudentClassDetails.objects.filter(id_classroom=classroom).select_related("id_student")
+    logger.debug(
+        "[ATTENDANCE] Seeding absent records | classroom_id=%s | enrolled_count=%d",
+        classroom.pk,
+        enrolled_details.count(),
+    )
+    for detail in enrolled_details:
+        Attendance.objects.get_or_create(
+            id_student=detail.id_student,
+            id_classroom=classroom,
+            check_in_time__date=ts.date(),
+            defaults={"check_in_time": ts, "attendance_status": Attendance.ABSENT},
+        )
+
+
+def _recent_attendance(student_info, classroom, cutoff):
+    return Attendance.objects.filter(
+        id_student=student_info,
+        id_classroom=classroom,
+        check_in_time__gte=cutoff,
+        attendance_status__in=[Attendance.PRESENT, Attendance.LATE],
+    ).first()
 
 
 # ---------------------------------------------------------------------------
@@ -186,43 +258,17 @@ def insert_attendance(id_classroom, student_id):
     )
 
     classroom = Classroom.objects.get(pk=id_classroom)
-    begin_time = classroom.begin_time
-
-    # Determine late vs present (> 15 minutes = late)
-    time_difference = (
-        datetime.combine(ts.date(), ts.time()) - datetime.combine(ts.date(), begin_time)
-    )
-    attendance_status = 3 if time_difference.total_seconds() > 900 else 2
-
-    # ------------------------------------------------------------------
-    # BUG FIX: StudentInfo has no 'classroom' field.
-    # Use StudentClassDetails as the join table instead.
-    # ------------------------------------------------------------------
-    enrolled_details = StudentClassDetails.objects.filter(id_classroom=classroom).select_related("id_student")
-    logger.debug(
-        "[ATTENDANCE] Seeding absent records | classroom_id=%s | enrolled_count=%d",
-        id_classroom, enrolled_details.count(),
-    )
+    attendance_status = _attendance_status_for_classroom(classroom, ts)
 
     with transaction.atomic():
-        for detail in enrolled_details:
-            student = detail.id_student
-            Attendance.objects.get_or_create(
-                id_student=student,
-                id_classroom=classroom,
-                check_in_time__date=ts.date(),
-                defaults={
-                    "check_in_time": ts,
-                    "attendance_status": 1,  # default: absent
-                },
-            )
+        _seed_absent_records(classroom, ts)
 
     # ------------------------------------------------------------------
     # 5-minute duplicate guard: check DB for recent record
     # ------------------------------------------------------------------
-    try:
-        student_info = StudentInfo.objects.get(id_student=student_id)
-    except StudentInfo.DoesNotExist:
+    resolved_student_id = _resolve_student_id(student_id)
+    student_info = StudentInfo.objects.filter(id_student=resolved_student_id).first()
+    if student_info is None:
         logger.error(
             "[ATTENDANCE] Student not found | student_id=%s | classroom_id=%s",
             student_id, id_classroom,
@@ -230,13 +276,7 @@ def insert_attendance(id_classroom, student_id):
         return "ERROR: student not found"
 
     cutoff = ts - timedelta(minutes=DUPLICATE_WINDOW_MINUTES)
-    recent = Attendance.objects.filter(
-        id_student=student_info,
-        id_classroom=classroom,
-        check_in_time__gte=cutoff,
-        attendance_status__in=[2, 3],  # only count real check-ins, not defaults
-    ).first()
-
+    recent = _recent_attendance(student_info, classroom, cutoff)
     if recent:
         logger.info(
             "[ATTENDANCE] Duplicate within %d min — skipping | student_id=%s | classroom_id=%s | last_check_in=%s",
@@ -273,9 +313,9 @@ def insert_attendance(id_classroom, student_id):
         action = "CREATED" if created else "UPDATED"
         logger.info(
             "[ATTENDANCE] DB commit OK | action=%s | student_id=%s | classroom_id=%s | status=%d",
-            action, student_id, id_classroom, attendance_status,
+            action, resolved_student_id, id_classroom, attendance_status,
         )
-        return f"OK:{action}:{student_id}:status={attendance_status}"
+        return f"OK:{action}:{resolved_student_id}:status={attendance_status}"
 
     except Exception as exc:
         logger.exception(
@@ -458,7 +498,7 @@ def main(id_subject):
         best_idx = int(np.argmax(probs, axis=1)[0])
         confidence = float(probs[0, best_idx])
         pkl_name = class_names[best_idx]
-        best_name = PKL_TO_DB_STUDENT_ID.get(pkl_name, pkl_name)
+        best_name = _resolve_student_id(pkl_name)
 
         logger.info(
             "[RECOGNITION] pkl=%s db=%s conf=%.4f threshold=%.2f | classroom=%s",
@@ -547,7 +587,7 @@ def main(id_subject):
                 attendance_status = 2
 
             try:
-                student_name = StudentInfo.objects.get(pk=best_name).student_name
+                student_name = _display_name_for_student_id(best_name)
             except Exception:
                 student_name = best_name
 

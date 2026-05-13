@@ -68,6 +68,21 @@ Dự án có kiến trúc kiểu **monolith Django**:
 - **Face recognition** (FaceNet embedding + so khớp) để xác định sinh viên
 - Ghi bản ghi `Attendance` (thời điểm check-in, trạng thái, lớp, sinh viên)
 
+### 4) Luồng điểm danh khuôn mặt hiện tại
+
+Luồng đang được giữ khá phẳng để dễ đọc:
+
+- Stream MJPEG ở `main/view/reg.py`
+- Sau khi nhận diện thành công, backend ghi DB và đẩy một bản ghi pending vào cache
+- View `lecturer_live_attendance_today` trả về danh sách đã ghi theo dạng phẳng
+- Template `lecturer_mask_attendance_by_face.html` poll API này và hiển thị ngay tên sinh viên mới nhất
+
+Điểm chính của refactor là:
+
+- Dùng helper nhỏ thay vì nhiều nhánh `if/else`
+- Tách rõ phần load model, phần ghi attendance, phần render UI
+- Giữ dữ liệu trả về cho UI ở dạng đơn giản: `student_id`, `student_name`, `check_in_time`, `attendance_status`
+
 Lưu ý: phần nhận diện/anti-spoof trong repo đang tồn tại dưới dạng module (TensorFlow/PyTorch/OpenCV). Mức độ “gắn” trực tiếp vào view nào sẽ phụ thuộc vào các view trong `main/view/` và các trang `templates/**` (webcam/capture).
 
 ## Lưu trữ dữ liệu

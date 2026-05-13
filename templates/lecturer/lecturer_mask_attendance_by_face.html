@@ -73,11 +73,11 @@
                         <div class="d-flex align-items-center gap-3">
                             <div class="status-dot"></div>
                             <div>
-                                <div class="fw-semibold" id="recognized-name">Nguyễn Văn A</div>
-                                <div class="small opacity-75" id="confidence-level">Độ tin cậy: 97.4%</div>
+                                <div class="fw-semibold" id="recognized-name">Chưa có sinh viên</div>
+                                <div class="small opacity-75" id="recognized-meta">Đang chờ nhận diện...</div>
                             </div>
                         </div>
-                        <span class="badge bg-success px-3 py-1">Đúng giờ</span>
+                        <span class="badge bg-success px-3 py-1" id="recognized-status-badge">Đúng giờ</span>
                     </div>
                 </div>
                 
@@ -105,13 +105,13 @@
                             <div class="flex-shrink-0">
                                 <div class="bg-success text-white rounded-circle fw-bold d-flex align-items-center justify-content-center"
                                      style="width: 42px; height: 42px; font-size: 18px;"
-                                     title="MSSV: {{ a.id_student.id_student }}">
+                                     title="MSSV: {{ a.student_id }}">
                                     <i class="mdi mdi-check"></i>
                                 </div>
                             </div>
                             <div class="flex-grow-1 min-width-0">
-                                <div class="fw-semibold text-truncate">{{ a.id_student.id_student }} • {{ a.id_student.student_name }}</div>
-                                <div class="small text-muted">{{ a.check_in_clock_sa_ch }}</div>
+                                <div class="fw-semibold text-truncate">{{ a.student_id }} • {{ a.student_name }}</div>
+                                <div class="small text-muted">{{ a.check_in_time }}</div>
                             </div>
                             {% if a.attendance_status == 2 %}
                                 <span class="badge bg-success">Đúng giờ</span>
@@ -131,7 +131,7 @@
                 <div class="mt-4 pt-4 border-top">
                     <div class="row text-center small">
                         <div class="col">
-                            <div class="fw-bold text-success">{{ attendance_list|length }}</div>
+                            <div class="fw-bold text-success" id="recognized-total">{{ attendance_list|length }}</div>
                             <div class="text-muted">Đã ghi nhận</div>
                         </div>
                         <div class="col">
@@ -159,13 +159,74 @@
 
         let _recognizedStreamFrameSeq = 0;
         let _lastRefreshOnStreamMs = 0;
+        let _pollIntervalId = null;
+        let _lastRecognitionKey = null;
+        let _hasBootstrappedRecognizedList = false;
+        let _recognitionHideTimeoutId = null;
         /** Sau khi stream camera trả khung hình thành công: gọi lại API danh sách điểm danh */
         const REFRESH_AFTER_STREAM_MS = 1000;
 
+        function _cleanupFaceAttendancePageListeners() {
+            document.removeEventListener('spa:before-content-update', _cleanupFaceAttendancePageListeners);
+            window.removeEventListener('beforeunload', _cleanupFaceAttendancePageListeners);
+            if (_pollIntervalId) {
+                clearInterval(_pollIntervalId);
+                _pollIntervalId = null;
+            }
+            if (_recognitionHideTimeoutId) {
+                clearTimeout(_recognitionHideTimeoutId);
+                _recognitionHideTimeoutId = null;
+            }
+        }
+        document.addEventListener('spa:before-content-update', _cleanupFaceAttendancePageListeners);
+        window.addEventListener('beforeunload', _cleanupFaceAttendancePageListeners);
+
+        const STATUS_BADGES = {
+            2: '<span class="badge bg-success">Đúng giờ</span>',
+            3: '<span class="badge bg-warning text-dark">Trễ</span>',
+        };
+
+        const STATUS_META = {
+            2: { label: 'Đúng giờ', className: 'badge bg-success px-3 py-1' },
+            3: { label: 'Trễ', className: 'badge bg-warning text-dark px-3 py-1' },
+        };
+
         function _statusBadge(status) {
-            if (status === 2) return '<span class="badge bg-success">Đúng giờ</span>';
-            if (status === 3) return '<span class="badge bg-warning text-dark">Trễ</span>';
-            return '<span class="badge bg-secondary">Khác</span>';
+            return STATUS_BADGES[status] || '<span class="badge bg-secondary">Khác</span>';
+        }
+
+        function _statusMeta(status) {
+            return STATUS_META[status] || { label: 'Khác', className: 'badge bg-secondary px-3 py-1' };
+        }
+
+        function _recognitionKey(item) {
+            if (!item) return '';
+            return `${item.id_attendance || 0}|${item.student_code || item.student_id}|${item.check_in_time}|${item.attendance_status}`;
+        }
+
+        function showLatestRecognized(item) {
+            const infoEl = document.getElementById('recognition-info');
+            const nameEl = document.getElementById('recognized-name');
+            const metaEl = document.getElementById('recognized-meta');
+            const statusEl = document.getElementById('recognized-status-badge');
+
+            if (!infoEl || !nameEl || !metaEl || !statusEl || !item) return;
+
+            const statusMeta = _statusMeta(item.attendance_status);
+            const studentCode = item.student_code || item.student_id;
+            nameEl.textContent = `${studentCode} • ${item.student_name}`;
+            metaEl.textContent = `Đã điểm danh lúc ${item.check_in_time}`;
+            statusEl.textContent = statusMeta.label;
+            statusEl.className = statusMeta.className;
+            infoEl.style.display = 'flex';
+
+            if (_recognitionHideTimeoutId) {
+                clearTimeout(_recognitionHideTimeoutId);
+            }
+            _recognitionHideTimeoutId = setTimeout(() => {
+                infoEl.style.display = 'none';
+                _recognitionHideTimeoutId = null;
+            }, 5000);
         }
 
         function _renderRecognizedList(items) {
@@ -182,12 +243,12 @@
                     <div class="flex-shrink-0">
                         <div class="bg-success text-white rounded-circle fw-bold d-flex align-items-center justify-content-center"
                              style="width: 42px; height: 42px; font-size: 18px;"
-                             title="MSSV: ${a.student_id}">
+                                     title="MSSV: ${a.student_code || a.student_id}">
                             <i class="mdi mdi-check"></i>
                         </div>
                     </div>
                     <div class="flex-grow-1 min-width-0">
-                        <div class="fw-semibold text-truncate">${a.student_id} • ${a.student_name}</div>
+                        <div class="fw-semibold text-truncate">${(a.student_code || a.student_id)} • ${a.student_name}</div>
                         <div class="small text-muted">${a.check_in_time}</div>
                     </div>
                     ${_statusBadge(a.attendance_status)}
@@ -205,8 +266,23 @@
 
                 const countEl = document.getElementById('recognized-count');
                 if (countEl) countEl.textContent = String(data.count ?? 0);
+                const totalEl = document.getElementById('recognized-total');
+                if (totalEl) totalEl.textContent = String(data.count ?? 0);
 
-                _renderRecognizedList(data.items || []);
+                const items = data.items || [];
+                _renderRecognizedList(items);
+
+                const latest = items[0] || null;
+                const latestKey = _recognitionKey(latest);
+                if (!_hasBootstrappedRecognizedList) {
+                    _lastRecognitionKey = latestKey;
+                    _hasBootstrappedRecognizedList = true;
+                    return;
+                }
+                if (latest && latestKey && latestKey !== _lastRecognitionKey) {
+                    _lastRecognitionKey = latestKey;
+                    showLatestRecognized(latest);
+                }
             } catch (_) {
                 // ignore transient network errors
             }
@@ -258,7 +334,7 @@
                 statusEl.parentElement.classList.add('btn-secondary');
                 statusEl.parentElement.classList.remove('btn-outline-primary');
                 if (box1) box1.style.display = 'block';
-                if (info) info.style.display = 'flex';
+                if (info) info.style.display = 'none';
                 if (videoImg) videoImg.style.display = 'none';
             } else {
                 _recognizedStreamFrameSeq = 0;
@@ -266,7 +342,6 @@
                 statusEl.parentElement.classList.remove('btn-secondary');
                 statusEl.parentElement.classList.add('btn-outline-primary');
                 if (box1) box1.style.display = 'none';
-                if (info) info.style.display = 'none';
                 if (videoImg) videoImg.style.display = '';
             }
         }
@@ -283,12 +358,7 @@
         // 1000ms is sufficient — DB writes are near-instant via background thread.
         // Dropping from 500ms halves the number of HTTP requests to Django.
         refreshRecognized();
-        const _pollIntervalId = setInterval(refreshRecognized, 1000);
-
-        // Cleanup khi SPA navigate away
-        window.addEventListener('beforeunload', () => {
-            if (_pollIntervalId) clearInterval(_pollIntervalId);
-        });
+        _pollIntervalId = setInterval(refreshRecognized, 1000);
 
         // NOTE: Removed "/" keyboard shortcut to avoid accidental camera pause while scanning.
     </script>

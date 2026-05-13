@@ -10,7 +10,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # Persist PostgreSQL data on the host machine.
+      - ./docker/postgres-data:/var/lib/postgresql/data
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
 
@@ -47,7 +48,6 @@ services:
       - db
 
 volumes:
-  postgres_data:
   static_volume:
   media_volume:
   pgadmin_data:

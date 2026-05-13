@@ -20,7 +20,7 @@ class StaffInfo(models.Model):
     roles = models.ManyToManyField('Role', through='StaffRole', related_name='staff_role')
 
     def __str__(self):
-        return self.name
+        return self.staff_name
 
 
 class Role(models.Model):
@@ -36,7 +36,7 @@ class StaffRole(models.Model):
     role = models.ForeignKey(Role, on_delete=models.CASCADE)
 
     def __str__(self):
-        return f"{self.staff.name} - {self.role.name}"
+        return f"{self.staff.staff_name} - {self.role.name}"
 
 
 class StudentInfo(models.Model):
@@ -78,6 +78,12 @@ class Classroom(models.Model):
         """SA / CH theo giờ kết thúc."""
         return 'SA' if self.end_time < time(12, 0) else 'CH'
 
+    def classroom_ids_in_group(self):
+        """Return all classroom IDs that share the same schedule group."""
+        if not self.group_key:
+            return [self.id_classroom]
+        return list(Classroom.objects.filter(group_key=self.group_key).values_list('id_classroom', flat=True))
+
 
 class StudentClassDetails(models.Model):
     id_classroom = models.ForeignKey(Classroom, on_delete=models.CASCADE)
@@ -105,6 +111,10 @@ def format_full_check_in_display(dt):
 
 
 class Attendance(models.Model):
+    ABSENT = 1
+    PRESENT = 2
+    LATE = 3
+
     id_attendance = models.BigAutoField(primary_key=True)
     check_in_time = models.DateTimeField()
     attendance_status = models.IntegerField()
@@ -122,6 +132,18 @@ class Attendance(models.Model):
     @property
     def check_in_display(self):
         return format_full_check_in_display(self.check_in_time)
+
+    @property
+    def status_label(self):
+        return {
+            self.ABSENT: 'Vắng',
+            self.PRESENT: 'Đúng giờ',
+            self.LATE: 'Trễ',
+        }.get(self.attendance_status, 'Khác')
+
+    @property
+    def is_recorded(self):
+        return self.attendance_status in (self.PRESENT, self.LATE)
 
 
 class BlogPost(models.Model):

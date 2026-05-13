@@ -1,9 +1,5 @@
-import os
-import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
-import cv2
-import numpy as np
 from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.hashers import check_password, make_password
@@ -17,15 +13,58 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET
 
 from main.decorators import lecturer_required
-from main.models import StaffInfo, StudentClassDetails
-from main.src.utility import parse_model_name
-from main.view.reg import *
-from main.models import BlogPost, format_clock_sa_ch_from_datetime
+from main.models import Attendance, BlogPost, Classroom, StaffInfo, StudentClassDetails, format_clock_sa_ch_from_datetime
+from main.view.reg import main as face_stream_main
+from main.view.reg import clear_pending_attendance_for_classroom
+from main.view.reg import get_pending_attendance_for_classroom
 
-# Do NOT instantiate AntiSpoofPredict here.
-# The ModelRegistry singleton (loaded by reg.py → model_registry.py) already
-# holds a single RetinaFace DNN net and all anti-spoof model weights.
-# Creating a second AntiSpoofPredict(0) here would double memory usage.
+
+def _week_bounds(reference_day):
+    week_start = reference_day - timedelta(days=reference_day.weekday())
+    return week_start, week_start + timedelta(days=6)
+
+
+def _attendance_queryset(classroom, day):
+    return (
+        Attendance.objects.filter(id_classroom=classroom, check_in_time__date=day)
+        .filter(attendance_status__in=(Attendance.PRESENT, Attendance.LATE))
+        .select_related('id_student')
+        .order_by('-check_in_time')
+    )
+
+
+def _attendance_item(attendance):
+    return {
+        "id_attendance": attendance.id_attendance,
+        "student_code": attendance.id_student.id_student,
+        "student_id": attendance.id_student.id_student,
+        "student_name": attendance.id_student.student_name,
+        "attendance_status": attendance.attendance_status,
+        "check_in_time": format_clock_sa_ch_from_datetime(attendance.check_in_time),
+        "_sort_ts": attendance.check_in_time,
+    }
+
+
+def _attendance_items_for_today(classroom, day):
+    items = {_item["student_id"]: _item for _item in map(_attendance_item, _attendance_queryset(classroom, day))}
+    for pending in get_pending_attendance_for_classroom(classroom.id_classroom):
+        items.setdefault(
+            pending["student_id"],
+            {
+                "id_attendance": 0,
+                "student_code": pending["student_id"],
+                "student_id": pending["student_id"],
+                "student_name": pending["student_name"],
+                "attendance_status": pending["attendance_status"],
+                "check_in_time": format_clock_sa_ch_from_datetime(pending["timestamp"]),
+                "_sort_ts": pending["timestamp"],
+            },
+        )
+    result = list(items.values())
+    result.sort(key=lambda x: x["_sort_ts"], reverse=True)
+    for item in result:
+        item.pop("_sort_ts", None)
+    return result
 
 
 @lecturer_required
@@ -47,8 +86,7 @@ def lecturer_schedule_view(request):
         except ValueError:
             raise Http404("Invalid date format for week_start parameter")
     else:
-        today = date.today()
-        week_start = today - timedelta(days=today.weekday())
+        week_start, _ = _week_bounds(date.today())
 
     end_of_week = week_start + timedelta(days=6)
 
@@ -103,16 +141,15 @@ def lecturer_change_password_view(request):
         new_password = request.POST['new_password']
         confirm_password = request.POST['confirm_password']
 
-        if check_password(old_password, lecturer.password):
-            if new_password == confirm_password:
-                lecturer.password = make_password(new_password)
-                lecturer.save()
-                update_session_auth_hash(request, lecturer)
-                messages.success(request, 'Đổi mật khẩu thành công.')
-            else:
-                messages.error(request, 'Mật khẩu mới không khớp.')
-        else:
+        if not check_password(old_password, lecturer.password):
             messages.error(request, 'Mật khẩu cũ không đúng.')
+        elif new_password != confirm_password:
+            messages.error(request, 'Mật khẩu mới không khớp.')
+        else:
+            lecturer.password = make_password(new_password)
+            lecturer.save()
+            update_session_auth_hash(request, lecturer)
+            messages.success(request, 'Đổi mật khẩu thành công.')
 
     return render(request, 'lecturer/lecturer_change_password.html')
 
@@ -122,8 +159,7 @@ def lecturer_attendance_class_view(request):
     id_lecturer = request.session.get('id_staff')
 
     today = date.today()
-    week_start = today - timedelta(days=today.weekday())
-    end_of_week = week_start + timedelta(days=6)
+    week_start, end_of_week = _week_bounds(today)
 
     lecturer_classes = Classroom.objects.filter(
         id_lecturer__id_staff=id_lecturer,
@@ -144,11 +180,7 @@ def lecturer_attendance_class_view(request):
 
 
 def _classroom_ids_same_schedule_group(classroom):
-    """Các buổi (row DB) trong cùng TKBG chia sẻ roster sinh viên theo group_key."""
-    gk = (getattr(classroom, "group_key", None) or "").strip()
-    if gk:
-        return list(Classroom.objects.filter(group_key=gk).values_list("pk", flat=True))
-    return [classroom.pk]
+    return classroom.classroom_ids_in_group()
 
 
 def _lecturer_roster_for_class(classroom):
@@ -180,9 +212,7 @@ def lecturer_mark_attendance(request, classroom_id):
         return redirect('lecturer_attendance')
 
     attendance_list = Attendance.objects.filter(id_classroom=classroom, check_in_time__date=today)
-    attendance_by_student = {}
-    for att in attendance_list:
-        attendance_by_student[att.id_student_id] = att
+    attendance_by_student = {att.id_student_id: att for att in attendance_list}
 
     now = timezone.now()
     for row in students_in_class:
@@ -224,17 +254,8 @@ def lecturer_mark_attendance(request, classroom_id):
 
 
 def live_video_feed2(request, classroom_id):
-    """
-    MJPEG stream for face recognition attendance.
-
-    - gzip removed: JPEG frames are already compressed; gzip adds CPU overhead
-      with essentially 0% size reduction and extra latency.
-    - generate_frames() removed: it created a new AntiSpoofPredict per call
-      (loading the DNN net from disk every time) and was not wired to any URL.
-      All inference now goes through ModelRegistry in reg.main().
-    """
     return StreamingHttpResponse(
-        main(classroom_id),
+        face_stream_main(classroom_id),
         content_type="multipart/x-mixed-replace; boundary=frame",
     )
 
@@ -243,29 +264,19 @@ def live_video_feed2(request, classroom_id):
 def lecturer_mark_attendance_by_face(request, classroom_id):
     classroom = get_object_or_404(Classroom, pk=classroom_id)
     students_in_class = _lecturer_roster_for_class(classroom)
-    day_of_week_today = timezone.localdate().isoweekday()
-
-    if day_of_week_today != classroom.day_of_week_begin:
+    if timezone.localdate().isoweekday() != classroom.day_of_week_begin:
         return redirect('lecturer_attendance')
 
-    # Hoàn tất: chỉ thoát và về danh sách — điểm danh đã được ghi khi nhận diện (stream loop).
     if request.method == 'POST':
+        clear_pending_attendance_for_classroom(classroom.id_classroom)
         messages.success(request, 'Đã hoàn tất điểm danh bằng khuôn mặt.')
         return redirect('lecturer_attendance')
 
     today = timezone.localdate()
-    # Chỉ coi "đã điểm danh" = có mặt (2) / trễ (3); vắng (1) không vào sidebar này
-    attendance_list = (
-        Attendance.objects.filter(id_classroom=classroom, check_in_time__date=today)
-        .filter(attendance_status__in=(2, 3))
-        .select_related('id_student')
-        .order_by('-check_in_time')
-    )
-
     context = {
         'students_in_class': students_in_class,
         'classroom': classroom,
-        'attendance_list': attendance_list
+        'attendance_list': _attendance_items_for_today(classroom, today),
     }
 
     return render(request, 'lecturer/lecturer_mask_attendance_by_face.html', context)
@@ -274,51 +285,8 @@ def lecturer_mark_attendance_by_face(request, classroom_id):
 @lecturer_required
 @require_GET
 def lecturer_live_attendance_today(request, classroom_id):
-    from main.view.reg import get_pending_attendance_for_classroom
-    
     classroom = Classroom.objects.get(pk=classroom_id)
-    today = timezone.localdate()
-    
-    # Lấy từ DB (đã commit)
-    qs = (
-        Attendance.objects
-        .filter(id_classroom=classroom, check_in_time__date=today)
-        .filter(attendance_status__in=(2, 3))
-        .select_related('id_student')
-        .order_by('-check_in_time')
-    )
-
-    items_dict = {}
-    for a in qs:
-        items_dict[a.id_student.id_student] = {
-            "id_attendance": a.id_attendance,
-            "student_id": a.id_student.id_student,
-            "student_name": a.id_student.student_name,
-            "attendance_status": a.attendance_status,
-            "check_in_time": format_clock_sa_ch_from_datetime(a.check_in_time),
-            "_sort_ts": a.check_in_time,
-        }
-
-    # Merge cache (pending, chưa commit DB) → hiển thị trước
-    pending_list = get_pending_attendance_for_classroom(classroom_id)
-    for p in pending_list:
-        sid = p["student_id"]
-        if sid not in items_dict:  # Chưa có từ DB → dùng cache
-            ts = p["timestamp"]
-            items_dict[sid] = {
-                "id_attendance": 0,
-                "student_id": sid,
-                "student_name": p["student_name"],
-                "attendance_status": p["attendance_status"],
-                "check_in_time": format_clock_sa_ch_from_datetime(ts),
-                "_sort_ts": ts,
-            }
-
-    items = list(items_dict.values())
-    items.sort(key=lambda x: x["_sort_ts"], reverse=True)
-    for it in items:
-        it.pop("_sort_ts", None)
-
+    items = _attendance_items_for_today(classroom, timezone.localdate())
     return JsonResponse({"count": len(items), "items": items})
 
 
